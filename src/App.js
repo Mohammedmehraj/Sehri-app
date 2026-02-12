@@ -238,14 +238,6 @@ function App() {
     }
   }, []);
   
-  // Get today's date
-  const today = new Date().toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  });
-
   // Filter providers based on search
   const filteredProviders = mockProviders.filter(provider =>
     provider.location.toLowerCase().includes(searchLocation.toLowerCase())
