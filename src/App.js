@@ -346,36 +346,6 @@ function App() {
     setChatInput('');
   };
 
-  // Generate bot responses
-  const generateBotResponse = (input) => {
-    if (input.includes('sehri') || input.includes('time') && input.includes('end')) {
-      return `Today's Sehri ends at ${prayerTimes?.Fajr || '5:35 AM'} (Fajr time). Make sure to finish eating and drinking before this time! 🌅`;
-    } else if (input.includes('iftar') || input.includes('break') && input.includes('fast')) {
-      return `Today's Iftar time is at ${prayerTimes?.Maghrib || '6:45 PM'} (Maghrib time). May Allah accept your fast! 🌆`;
-    } else if (input.includes('prayer') || input.includes('salah') || input.includes('namaz')) {
-      if (!prayerTimes) return 'Loading prayer times...';
-      return `Today's prayer times for Bangalore:\n🌅 Fajr: ${prayerTimes.Fajr}\n☀️ Sunrise: ${prayerTimes.Sunrise}\n🕌 Dhuhr: ${prayerTimes.Dhuhr}\n🌤️ Asr: ${prayerTimes.Asr}\n🌆 Maghrib: ${prayerTimes.Maghrib}\n🌙 Isha: ${prayerTimes.Isha}`;
-    } else if (input.includes('free') || input.includes('masjid') || input.includes('mosque')) {
-      return 'We have several Masjids and volunteer groups offering FREE Sehri! Check the Home page and filter for FREE options. Popular locations include Shivajinagar, Frazer Town, and Koramangala. 🕌';
-    } else if (input.includes('restaurant') || input.includes('paid')) {
-      return 'Looking for restaurants? We have listings of restaurants serving Sehri marked as PAID. You can find them on the Home page - they offer various cuisines including Mughlai, Biryani, Arabic, and more! 🍽️';
-    } else if (input.includes('location') || input.includes('area') || input.includes('near')) {
-      return 'You can search for Sehri providers by location using the search bar on the Home page. We have providers across Bangalore including Koramangala, Indiranagar, HSR Layout, Whitefield, Banashankari, and more! 📍';
-    } else if (input.includes('add') || input.includes('submit') || input.includes('request')) {
-      return 'You can submit a new Sehri provider using the "Request Sehri" button in the navigation menu. Help us grow our community database! ➕';
-    } else if (input.includes('live') || input.includes('stream') || input.includes('makkah')) {
-      return 'You can watch live streams from Mecca 24/7! Click on the "Live Stream" button in the navigation menu to view the blessed Ka\'bah. 📺';
-    } else if (input.includes('ramadan') || input.includes('fasting') || input.includes('fast')) {
-      return 'Ramadan Mubarak! 🌙 Remember to have Sehri before Fajr, stay hydrated, and break your fast with dates and water. Focus on prayer, Quran, and good deeds. May Allah accept your fasts!';
-    } else if (input.includes('hello') || input.includes('hi') || input.includes('assalam')) {
-      return 'Wa Alaikum Assalam! 😊 How can I help you today? You can ask me about Sehri times, prayer times, free Sehri locations, or anything else related to Ramadan in Bangalore!';
-    } else if (input.includes('thank')) {
-      return 'You\'re welcome! May Allah make this Ramadan easy and blessed for you. Feel free to ask if you have more questions! 🤲';
-    } else {
-      return 'I can help you with:\n• Sehri and Iftar times\n• Prayer times for Bangalore\n• Finding free or paid Sehri providers\n• Searching by location\n• Live streams from Mecca\n• Submitting new Sehri providers\n\nWhat would you like to know? 🌙';
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
       {/* Header */}
