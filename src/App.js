@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '').trim();
+const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').trim();
 
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [

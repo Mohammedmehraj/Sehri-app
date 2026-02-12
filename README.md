@@ -81,8 +81,14 @@ npm start
 
 1. Import the repository into Vercel.
 2. Set these environment variables in Vercel Project Settings:
-	- `REACT_APP_CHATBOT_API_URL` (required): full URL of your backend chat endpoint (example `https://your-backend.vercel.app/api/chat`)
-3. Deploy. This repository now deploys frontend only. Backend should be deployed from your separate backend repository.
+	- `REACT_APP_CHATBOT_API_URL` (optional): `/api/chat` for same-project deployment
+3. Deploy. This project serves frontend and Python API from `api/index.py` in one Vercel project.
+
+### API Endpoints (Vercel)
+
+- `GET /api/hello` -> `{ "message": "Hello World" }`
+- `POST /api/chat` -> `{ "response": "Hello World" }`
+- `GET /api/health` -> `{ "status": "ok" }`
 
 ## Technologies Used
 
