@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
+const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '').trim();
+
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
   {
@@ -289,12 +291,24 @@ function App() {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
+    if (!CHATBOT_API_URL) {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          type: 'bot',
+          text: 'Chatbot is not configured. Set REACT_APP_CHATBOT_API_URL in frontend environment variables.',
+        },
+      ]);
+      setChatInput('');
+      return;
+    }
+
     // Add user message
     const userMessage = { type: 'user', text: chatInput };
     setChatMessages(prev => [...prev, userMessage]);
 
     // Call backend API for bot response
-    fetch('/api/chat', {
+    fetch(CHATBOT_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
