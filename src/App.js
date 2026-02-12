@@ -294,24 +294,39 @@ function App() {
     setChatMessages(prev => [...prev, userMessage]);
 
     // Call backend API for bot response
-    fetch('http://localhost:5000/api/chat', {
+    fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ message: chatInput })
     })
-    .then(response => response.json())
+    .then(async response => {
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        const errorText = contentType.includes('application/json')
+          ? (await response.json()).error
+          : await response.text();
+        throw new Error(errorText || `Request failed with status ${response.status}`);
+      }
+
+      if (!contentType.includes('application/json')) {
+        const rawText = await response.text();
+        throw new Error(rawText || 'Invalid response from server');
+      }
+
+      return response.json();
+    })
     .then(data => {
       if (data.response) {
         setChatMessages(prev => [...prev, { type: 'bot', text: data.response }]);
       } else if (data.error) {
-        setChatMessages(prev => [...prev, { type: 'bot', text: 'Sorry, I encountered an error. Please try again.' }]);
+        setChatMessages(prev => [...prev, { type: 'bot', text: data.error }]);
       }
     })
     .catch(error => {
       console.error('Chatbot error:', error);
-      setChatMessages(prev => [...prev, { type: 'bot', text: 'Sorry, I\'m having trouble connecting. Please refresh and try again.' }]);
+      setChatMessages(prev => [...prev, { type: 'bot', text: `Chatbot error: ${error.message}` }]);
     });
 
     setChatInput('');

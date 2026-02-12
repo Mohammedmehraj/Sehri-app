@@ -63,14 +63,33 @@ cd "c:\Users\Muhammed mehraj\Desktop\New folder (2)\New folder"
 2. Install dependencies:
 ```bash
 npm install
+pip install -r requirements.txt
 ```
 
-3. Start the development server:
+3. Create your local environment file:
 ```bash
+copy .env.example .env
+```
+
+4. Start backend + frontend:
+```bash
+.\env\Scripts\python.exe .\api\chatbot_server.py
 npm start
 ```
 
-4. Open your browser and visit: `http://localhost:3000`
+5. Open your browser and visit: `http://localhost:3000`
+
+## Vercel Deployment
+
+1. Import the repository into Vercel.
+2. Set these environment variables in Vercel Project Settings:
+	- `OPENROUTER_API_KEY` (required)
+	- `OPENROUTER_MODEL` (optional, default is `liquid/lfm-2.5-1.2b-instruct:free`)
+	- `OPENROUTER_BASE_URL` (optional, default is `https://openrouter.ai/api/v1`)
+	- `OPENROUTER_SITE_URL` (optional, set to your Vercel URL)
+	- `OPENROUTER_APP_NAME` (optional)
+	- `CORS_ORIGINS` (optional, comma-separated domains)
+3. Deploy. The React app builds to `build/` and Flask serves `/api/chat` from `api/chatbot_server.py`.
 
 ## Technologies Used
 

@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Find Sehri restaurants in Bangalore",
   "private": true,
+  "proxy": "http://localhost:5000",
   "dependencies": {
+    "dotenv": "^17.2.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1"
