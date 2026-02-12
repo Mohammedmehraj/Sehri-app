@@ -70,18 +70,33 @@ npm install
 copy .env.example .env
 ```
 
-4. Start the frontend:
+4. Install Python API dependencies:
+```bash
+env\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+5. Start the API server:
+```bash
+env\Scripts\python.exe -m uvicorn api.index:app --reload --port 8000
+```
+
+6. In another terminal, start the frontend:
 ```bash
 npm start
 ```
 
-5. Open your browser and visit: `http://localhost:3000`
+7. Open your browser and visit: `http://localhost:3000`
 
 ## Vercel Deployment
 
 1. Import the repository into Vercel.
 2. Set these environment variables in Vercel Project Settings:
 	- `REACT_APP_CHATBOT_API_URL` (optional): `/api/chat` for same-project deployment
+	- `REACT_APP_PROVIDERS_API_URL` (optional): `/api/providers` for same-project deployment
+	- `REACT_APP_PROVIDERS_PAGE_SIZE` (optional): default `12`
+	- `MONGODB_URI` (required): MongoDB connection string
+	- `MONGODB_DB_NAME` (optional): if omitted, API auto-detects a DB with providers
+	- `MONGODB_PROVIDERS_COLLECTION` (optional): defaults to `providers` (case-insensitive)
 3. Deploy. This project serves frontend and Python API from `api/index.py` in one Vercel project.
 
 ### API Endpoints (Vercel)
@@ -89,6 +104,9 @@ npm start
 - `GET /api/hello` -> `{ "message": "Hello World" }`
 - `POST /api/chat` -> `{ "response": "Hello World" }`
 - `GET /api/health` -> `{ "status": "ok" }`
+- `GET /api/providers` -> paginated providers from MongoDB
+  - Query params: `page` (default `1`), `page_size` (default `12`), `location` (optional)
+- `GET /api/providers/all` -> all raw provider documents from MongoDB
 
 ## Technologies Used
 

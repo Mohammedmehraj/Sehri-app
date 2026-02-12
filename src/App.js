@@ -1,6 +1,33 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import PrayerCountdownRing from './components/PrayerCountdownRing';
 
 const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').trim();
+const PROVIDERS_API_URL = (process.env.REACT_APP_PROVIDERS_API_URL || '/api/providers').trim();
+const DONATION_URL = (process.env.REACT_APP_DONATION_URL || 'https://www.launchgood.com').trim();
+const PROVIDERS_PAGE_SIZE = Math.max(
+  1,
+  parseInt(process.env.REACT_APP_PROVIDERS_PAGE_SIZE || '12', 10) || 12
+);
+
+const SKY_GRADIENT_BY_PERIOD = {
+  fajr: 'bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900',
+  sunrise: 'bg-gradient-to-b from-orange-300 via-pink-300 to-yellow-200',
+  dhuhr: 'bg-gradient-to-b from-sky-400 to-blue-500',
+  asr: 'bg-gradient-to-b from-amber-300 to-orange-400',
+  maghrib: 'bg-gradient-to-b from-orange-500 via-red-500 to-pink-600',
+  isha: 'bg-gradient-to-b from-indigo-950 via-blue-950 to-slate-900',
+};
+
+const UI_GRADIENT_BY_PERIOD = {
+  fajr: 'from-indigo-800 via-purple-700 to-blue-800',
+  sunrise: 'from-orange-400 via-pink-400 to-yellow-300',
+  dhuhr: 'from-sky-500 to-blue-600',
+  asr: 'from-amber-400 to-orange-500',
+  maghrib: 'from-orange-600 via-red-500 to-pink-600',
+  isha: 'from-indigo-950 via-blue-900 to-slate-900',
+};
+
+const DARK_UI_PERIODS = new Set(['fajr', 'maghrib', 'isha']);
 
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
@@ -111,14 +138,27 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState(null);
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [showSehriRequestForm, setShowSehriRequestForm] = useState(false);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [activeSection, setActiveSection] = useState('home'); // 'home', 'about'
   const [showChatbot, setShowChatbot] = useState(false);
+  const [skyThemeClass, setSkyThemeClass] = useState(SKY_GRADIENT_BY_PERIOD.isha);
+  const [activePrayerPeriod, setActivePrayerPeriod] = useState('isha');
   const [chatMessages, setChatMessages] = useState([
     { type: 'bot', text: 'Assalamu Alaikum! 🌙 I\'m here to help you with Sehri information, prayer times, and Ramadan queries. How can I assist you today?' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const chatMessagesEndRef = useRef(null);
   const [visitorCount, setVisitorCount] = useState(0);
+  const [providers, setProviders] = useState(mockProviders.slice(0, PROVIDERS_PAGE_SIZE));
+  const [providersPage, setProvidersPage] = useState(1);
+  const [providersTotal, setProvidersTotal] = useState(mockProviders.length);
+  const [providersTotalPages, setProvidersTotalPages] = useState(
+    Math.max(1, Math.ceil(mockProviders.length / PROVIDERS_PAGE_SIZE))
+  );
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersPageLoadingDirection, setProvidersPageLoadingDirection] = useState('');
+  const [providersError, setProvidersError] = useState('');
   const [formData, setFormData] = useState({
     providerName: '',
     providerType: 'Masjid',
@@ -129,6 +169,20 @@ function App() {
     foodType: '',
     pricing: 'Free',
     additionalInfo: ''
+  });
+  const [sehriRequestData, setSehriRequestData] = useState({
+    fullName: '',
+    phoneNumber: '',
+    location: '',
+    peopleCount: '1',
+    neededBy: '',
+    notes: ''
+  });
+  const [feedbackData, setFeedbackData] = useState({
+    name: '',
+    email: '',
+    rating: '5',
+    message: ''
   });
   
   const calculateNextPrayer = useCallback((timings) => {
@@ -237,11 +291,149 @@ function App() {
       setVisitorCount(currentCount);
     }
   }, []);
+
+  // Load providers from backend API
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchProviders = async () => {
+      setProvidersLoading(true);
+      setProvidersError('');
+
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.set('page', String(providersPage));
+        queryParams.set('page_size', String(PROVIDERS_PAGE_SIZE));
+        const trimmedLocation = searchLocation.trim();
+        if (trimmedLocation) {
+          queryParams.set('location', trimmedLocation);
+        }
+
+        const separator = PROVIDERS_API_URL.includes('?') ? '&' : '?';
+        const requestUrl = `${PROVIDERS_API_URL}${separator}${queryParams.toString()}`;
+
+        const response = await fetch(requestUrl, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        const contentType = response.headers.get('content-type') || '';
+
+        if (response.status === 304) {
+          return;
+        }
+
+        if (!response.ok) {
+          let errorMessage = `Request failed with status ${response.status}`;
+          if (contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.detail || errorData.error || errorMessage;
+          } else {
+            const rawText = await response.text();
+            if (rawText) {
+              errorMessage = rawText;
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (!contentType.includes('application/json')) {
+          throw new Error('Invalid response from providers API');
+        }
+
+        const data = await response.json();
+
+        // Backward compatibility if API returns a plain list.
+        if (Array.isArray(data)) {
+          const total = data.length;
+          const totalPages = Math.max(1, Math.ceil(total / PROVIDERS_PAGE_SIZE));
+          const safePage = Math.min(providersPage, totalPages);
+          const startIndex = (safePage - 1) * PROVIDERS_PAGE_SIZE;
+
+          setProviders(data.slice(startIndex, startIndex + PROVIDERS_PAGE_SIZE));
+          setProvidersTotal(total);
+          setProvidersTotalPages(totalPages);
+          if (safePage !== providersPage) {
+            setProvidersPage(safePage);
+          }
+          return;
+        }
+
+        if (!data || !Array.isArray(data.data)) {
+          throw new Error('Providers API did not return paginated data');
+        }
+
+        const pagination = data.pagination || {};
+        const total = Number.isFinite(Number(pagination.total))
+          ? Number(pagination.total)
+          : data.data.length;
+        const totalPages = Number.isFinite(Number(pagination.total_pages))
+          ? Math.max(1, Number(pagination.total_pages))
+          : Math.max(1, Math.ceil(total / PROVIDERS_PAGE_SIZE));
+        const pageFromApi = Number.isFinite(Number(pagination.page))
+          ? Number(pagination.page)
+          : providersPage;
+
+        setProviders(data.data);
+        setProvidersTotal(total);
+        setProvidersTotalPages(totalPages);
+        if (pageFromApi !== providersPage) {
+          setProvidersPage(pageFromApi);
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return;
+        }
+
+        console.error('Providers fetch error:', error);
+        setProvidersError(error.message || 'Failed to load providers');
+
+        const fallbackFiltered = mockProviders.filter(provider =>
+          (provider.location || '').toLowerCase().includes(searchLocation.toLowerCase())
+        );
+        const fallbackTotal = fallbackFiltered.length;
+        const fallbackTotalPages = Math.max(1, Math.ceil(fallbackTotal / PROVIDERS_PAGE_SIZE));
+        const safePage = Math.min(providersPage, fallbackTotalPages);
+        const startIndex = (safePage - 1) * PROVIDERS_PAGE_SIZE;
+
+        setProviders(fallbackFiltered.slice(startIndex, startIndex + PROVIDERS_PAGE_SIZE));
+        setProvidersTotal(fallbackTotal);
+        setProvidersTotalPages(fallbackTotalPages);
+        if (safePage !== providersPage) {
+          setProvidersPage(safePage);
+        }
+      } finally {
+        setProvidersLoading(false);
+        setProvidersPageLoadingDirection('');
+      }
+    };
+
+    const debounceId = setTimeout(fetchProviders, 250);
+    return () => {
+      clearTimeout(debounceId);
+      controller.abort();
+    };
+  }, [providersPage, searchLocation]);
   
-  // Filter providers based on search
-  const filteredProviders = mockProviders.filter(provider =>
-    provider.location.toLowerCase().includes(searchLocation.toLowerCase())
-  );
+  const filteredProviders = providers;
+  const currentProvidersPage = Math.min(providersPage, providersTotalPages);
+  const providersStart = providersTotal === 0 ? 0 : ((currentProvidersPage - 1) * PROVIDERS_PAGE_SIZE) + 1;
+  const providersEnd = Math.min(currentProvidersPage * PROVIDERS_PAGE_SIZE, providersTotal);
+
+  const handlePreviousProvidersPage = () => {
+    if (currentProvidersPage === 1 || providersLoading) {
+      return;
+    }
+    setProvidersPageLoadingDirection('prev');
+    setProvidersPage(prev => Math.max(1, prev - 1));
+  };
+
+  const handleNextProvidersPage = () => {
+    if (currentProvidersPage === providersTotalPages || providersLoading) {
+      return;
+    }
+    setProvidersPageLoadingDirection('next');
+    setProvidersPage(prev => Math.min(providersTotalPages, prev + 1));
+  };
 
   // Handle form input changes
   const handleFormChange = (e) => {
@@ -276,6 +468,54 @@ function App() {
     });
     
     setShowRequestForm(false);
+  };
+
+  const handleSehriRequestChange = (e) => {
+    const { name, value } = e.target;
+    setSehriRequestData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSehriRequestSubmit = (e) => {
+    e.preventDefault();
+
+    console.log('Sehri Support Request Submitted:', sehriRequestData);
+    alert(`Thanks ${sehriRequestData.fullName}! Your Sehri request has been received.`);
+
+    setSehriRequestData({
+      fullName: '',
+      phoneNumber: '',
+      location: '',
+      peopleCount: '1',
+      neededBy: '',
+      notes: ''
+    });
+    setShowSehriRequestForm(false);
+  };
+
+  const handleFeedbackChange = (e) => {
+    const { name, value } = e.target;
+    setFeedbackData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleFeedbackSubmit = (e) => {
+    e.preventDefault();
+
+    console.log('Feedback Submitted:', feedbackData);
+    alert('Thank you for your feedback! We appreciate your support.');
+
+    setFeedbackData({
+      name: '',
+      email: '',
+      rating: '5',
+      message: ''
+    });
+    setShowFeedbackForm(false);
   };
 
   // Handle chatbot message
@@ -338,17 +578,46 @@ function App() {
     setChatInput('');
   };
 
+  const handlePrayerPeriodChange = useCallback((period) => {
+    setActivePrayerPeriod(period);
+    setSkyThemeClass(SKY_GRADIENT_BY_PERIOD[period] || SKY_GRADIENT_BY_PERIOD.isha);
+  }, []);
+
+  const headerCardGradientClass = UI_GRADIENT_BY_PERIOD[activePrayerPeriod] || UI_GRADIENT_BY_PERIOD.isha;
+  const isDarkUiTheme = DARK_UI_PERIODS.has(activePrayerPeriod);
+  const headerTextClass = isDarkUiTheme ? 'text-white' : 'text-slate-900';
+  const headerSubTextClass = isDarkUiTheme ? 'text-white/85' : 'text-slate-800';
+  const navSectionClass = isDarkUiTheme
+    ? `bg-gradient-to-r ${headerCardGradientClass} border-b border-white/20`
+    : `bg-gradient-to-r ${headerCardGradientClass} border-b border-white/70`;
+  const navActiveButtonClass = isDarkUiTheme
+    ? 'bg-white/20 text-white border-white/40 shadow-md'
+    : 'bg-white/80 text-slate-900 border-white/80 shadow-md';
+  const navInactiveButtonClass = isDarkUiTheme
+    ? 'bg-white/10 text-white border-white/30 hover:bg-white/20'
+    : 'bg-white/55 text-slate-900 border-white/70 hover:bg-white/75';
+  const primaryTimingButtonClass = isDarkUiTheme
+    ? `bg-gradient-to-r ${headerCardGradientClass} text-white hover:opacity-95`
+    : `bg-gradient-to-r ${headerCardGradientClass} text-slate-900 hover:opacity-95`;
+  const overlayTextClass = isDarkUiTheme ? 'text-white' : 'text-slate-900';
+  const overlayMutedTextClass = isDarkUiTheme ? 'text-white/80' : 'text-slate-700';
+  const overlayIconClass = isDarkUiTheme ? 'text-white/70' : 'text-slate-500';
+  const overlayStrongTextClass = isDarkUiTheme ? 'text-white' : 'text-slate-950';
+  const overlayButtonClass = isDarkUiTheme
+    ? 'border-white/40 bg-white/10 text-white hover:bg-white/20'
+    : 'border-white/80 bg-white/60 text-slate-900 hover:bg-white/80';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className={`min-h-screen transition-all duration-700 ${skyThemeClass}`}>
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-lg sticky top-0 z-30">
+      <header className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} transition-all duration-700 shadow-lg sticky top-0 z-30`}>
         <div className="container mx-auto px-4 py-4 md:py-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-1">
                 Bangalore Sehri Finder
               </h1>
-              <p className="text-indigo-100 text-xs md:text-sm">
+              <p className={`${headerSubTextClass} text-xs md:text-sm`}>
                 Find Sehri at Masjids, Volunteers & Restaurants
               </p>
             </div>
@@ -358,15 +627,15 @@ function App() {
       </header>
 
       {/* Navigation */}
-      <section className="bg-white/85 backdrop-blur-sm border-b border-purple-100">
+      <section className={`${navSectionClass} transition-all duration-700 backdrop-blur-sm`}>
         <div className="container mx-auto px-4 py-3">
           <nav className="flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setActiveSection('home')}
               className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'home'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                  : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+                  ? navActiveButtonClass
+                  : navInactiveButtonClass
               }`}
             >
               Home
@@ -376,20 +645,45 @@ function App() {
                 setActiveSection('home');
                 setShowRequestForm(true);
               }}
-              className="px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border bg-white text-purple-700 border-purple-200 hover:bg-purple-50"
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
+                showRequestForm ? navActiveButtonClass : navInactiveButtonClass
+              }`}
+            >
+              Register as Sehri Provider
+            </button>
+            <button
+              onClick={() => {
+                setActiveSection('home');
+                setShowSehriRequestForm(true);
+              }}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
             >
               Request Sehri
+            </button>
+            <button
+              onClick={() => setShowFeedbackForm(true)}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
+            >
+              Feedback
             </button>
             <button
               onClick={() => setActiveSection('about')}
               className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'about'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                  : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+                  ? navActiveButtonClass
+                  : navInactiveButtonClass
               }`}
             >
               About Us
             </button>
+            <a
+              href={DONATION_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
+            >
+              Donate
+            </a>
           </nav>
         </div>
       </section>
@@ -399,14 +693,14 @@ function App() {
         <section className="mb-6">
           <div className="bg-white rounded-2xl border border-purple-100 shadow-sm p-4 sm:p-5">
             {!loading && nextPrayer && (
-              <div className="mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg px-3 py-2.5">
-                <p className="text-xs uppercase tracking-wide text-indigo-100 mb-1">Next Prayer</p>
-                <p className="text-xl font-bold flex items-center gap-2">
-                  <span>{nextPrayer.icon}</span>
-                  {nextPrayer.time}
-                </p>
-                <p className="text-xs sm:text-sm text-indigo-100 mt-1">{nextPrayer.name}</p>
-                <p className="text-xs text-indigo-200 mt-1">In {nextPrayer.timeUntil}</p>
+              <div className={`mb-4 bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} transition-all duration-700 rounded-lg px-3 py-2.5`}>
+                <div className="flex items-center justify-center">
+                  <PrayerCountdownRing
+                    timings={prayerTimes}
+                    onPeriodChange={handlePrayerPeriodChange}
+                    isDarkTheme={isDarkUiTheme}
+                  />
+                </div>
               </div>
             )}
 
@@ -476,7 +770,7 @@ function App() {
             {/* Search Bar */}
             <div className="mb-8">
               <div className="max-w-2xl mx-auto">
-                <label htmlFor="search" className="block text-gray-700 font-semibold mb-2">
+                <label htmlFor="search" className={`block ${overlayTextClass} font-semibold mb-2`}>
                   Search by Location
                 </label>
                 <div className="relative">
@@ -485,11 +779,15 @@ function App() {
                     type="text"
                     placeholder="Enter location (e.g., Koramangala, Indiranagar...)"
                     value={searchLocation}
-                    onChange={(e) => setSearchLocation(e.target.value)}
+                    onChange={(e) => {
+                      setSearchLocation(e.target.value);
+                      setProvidersPageLoadingDirection('');
+                      setProvidersPage(1);
+                    }}
                     className="w-full px-4 py-3 pl-12 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                   <svg 
-                    className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                    className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 ${overlayIconClass}`}
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -507,10 +805,21 @@ function App() {
 
             {/* Results Count */}
             <div className="mb-6">
-              <p className="text-gray-600 text-center">
-                Found <span className="font-bold text-purple-600">{filteredProviders.length}</span> Sehri providers
+              <p className={`${overlayTextClass} text-center`}>
+                Found <span className={`font-bold ${overlayStrongTextClass}`}>{providersTotal}</span> Sehri providers
                 {searchLocation && <span> in "<span className="font-semibold">{searchLocation}</span>"</span>}
+                {providersTotal > 0 && (
+                  <span> (showing {providersStart}-{providersEnd})</span>
+                )}
               </p>
+              {providersLoading && (
+                <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>Loading providers from database...</p>
+              )}
+              {providersError && (
+                <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>
+                  Showing fallback list because API failed: {providersError}
+                </p>
+              )}
             </div>
 
             {/* Provider Cards Grid */}
@@ -592,12 +901,6 @@ function App() {
                       <p className="text-sm text-gray-700 font-medium">{provider.foodType}</p>
                     </div>
 
-                    <div className="mt-4">
-                      <span className="inline-block bg-purple-100 text-purple-700 text-xs px-3 py-1 rounded-full font-semibold">
-                        📍 {provider.location}
-                      </span>
-                    </div>
-
                     {/* Action Buttons */}
                     <div className="mt-4 flex gap-2">
                       {/* Google Maps Button */}
@@ -639,14 +942,52 @@ function App() {
               ))}
             </div>
 
+            {providersTotalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={handlePreviousProvidersPage}
+                  disabled={currentProvidersPage === 1 || providersLoading}
+                  className={`px-4 py-2 rounded-lg border font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${overlayButtonClass}`}
+                >
+                  {providersLoading && providersPageLoadingDirection === 'prev' ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-purple-200 border-t-purple-600"></span>
+                      Loading...
+                    </span>
+                  ) : (
+                    'Previous'
+                  )}
+                </button>
+                <span className={`text-sm font-semibold ${overlayTextClass}`}>
+                  Page {currentProvidersPage} of {providersTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextProvidersPage}
+                  disabled={currentProvidersPage === providersTotalPages || providersLoading}
+                  className={`px-4 py-2 rounded-lg border font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${overlayButtonClass}`}
+                >
+                  {providersLoading && providersPageLoadingDirection === 'next' ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-purple-200 border-t-purple-600"></span>
+                      Loading...
+                    </span>
+                  ) : (
+                    'Next'
+                  )}
+                </button>
+              </div>
+            )}
+
             {/* No Results Message */}
-            {filteredProviders.length === 0 && (
+            {!providersLoading && providersTotal === 0 && (
               <div className="text-center py-12">
                 <div className="text-5xl sm:text-6xl mb-4">🔍</div>
-                <h3 className="text-2xl font-bold text-gray-700 mb-2">
+                <h3 className={`text-2xl font-bold mb-2 ${overlayTextClass}`}>
                   No Sehri providers found
                 </h3>
-                <p className="text-gray-500">
+                <p className={overlayMutedTextClass}>
                   Try searching for a different location like Shivajinagar, Koramangala, Indiranagar, or Whitefield
                 </p>
               </div>
@@ -737,7 +1078,7 @@ function App() {
                   <p className="text-gray-600 leading-relaxed mb-4">
                     This platform thrives on community contributions. If you know a Masjid offering free Sehri, 
                     a volunteer group serving the community, or a restaurant with early morning service that's 
-                    not listed here, please use the "Request Sehri" feature to submit it. Together, we can make 
+                    not listed here, please use the "Register as Sehri Provider" form to submit it. Together, we can make 
                     Ramadan easier for everyone in Bangalore.
                   </p>
                   <button
@@ -745,7 +1086,7 @@ function App() {
                       setActiveSection('home');
                       setShowRequestForm(true);
                     }}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg"
+                    className={`${primaryTimingButtonClass} px-6 py-3 rounded-lg font-semibold transition-all shadow-lg`}
                   >
                     Submit a Sehri Provider
                   </button>
@@ -778,8 +1119,8 @@ function App() {
       {/* Floating Action Button */}
       {activeSection === 'home' && (
         <button
-          onClick={() => setShowRequestForm(true)}
-          className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group"
+          onClick={() => setShowSehriRequestForm(true)}
+          className={`fixed bottom-4 right-4 sm:bottom-8 sm:right-8 ${primaryTimingButtonClass} p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group`}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -885,17 +1226,17 @@ function App() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[94vh] sm:max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 sm:p-6 rounded-t-2xl sticky top-0">
+            <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0 transition-all duration-700`}>
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold mb-2">🍽️ Register as Sehri Provider</h2>
-                  <p className="text-purple-100 text-sm">
+                  <p className={`${headerSubTextClass} text-sm`}>
                     Know a Masjid, Volunteer group, or restaurant serving Sehri? Help the community!
                   </p>
                 </div>
                 <button
                   onClick={() => setShowRequestForm(false)}
-                  className="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
+                  className={`${headerTextClass} hover:bg-white/20 rounded-full p-2 transition-colors`}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1084,9 +1425,261 @@ function App() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg hover:shadow-xl"
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl`}
                 >
                   Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sehri Request Modal */}
+      {showSehriRequestForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[94vh] sm:max-h-[90vh] overflow-y-auto">
+            <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">Need Sehri? Submit a Request</h2>
+                  <p className={`${headerSubTextClass} text-sm`}>
+                    Share your location and requirement. We will connect you with nearby providers.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowSehriRequestForm(false)}
+                  className="hover:bg-white/20 rounded-full p-2 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSehriRequestSubmit} className="p-4 sm:p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="sehriFullName" className="block text-gray-700 font-semibold mb-2">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="sehriFullName"
+                    name="fullName"
+                    value={sehriRequestData.fullName}
+                    onChange={handleSehriRequestChange}
+                    required
+                    placeholder="Your full name"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sehriPhone" className="block text-gray-700 font-semibold mb-2">
+                    Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    id="sehriPhone"
+                    name="phoneNumber"
+                    value={sehriRequestData.phoneNumber}
+                    onChange={handleSehriRequestChange}
+                    required
+                    placeholder="+91 98XXXXXXXX"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <label htmlFor="sehriPeopleCount" className="block text-gray-700 font-semibold mb-2">
+                    People Count <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="sehriPeopleCount"
+                    name="peopleCount"
+                    min="1"
+                    value={sehriRequestData.peopleCount}
+                    onChange={handleSehriRequestChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="sehriNeededBy" className="block text-gray-700 font-semibold mb-2">
+                    Needed By <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    id="sehriNeededBy"
+                    name="neededBy"
+                    value={sehriRequestData.neededBy}
+                    onChange={handleSehriRequestChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="sehriLocation" className="block text-gray-700 font-semibold mb-2">
+                  Location <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="sehriLocation"
+                  name="location"
+                  value={sehriRequestData.location}
+                  onChange={handleSehriRequestChange}
+                  required
+                  placeholder="Area and landmark"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="sehriNotes" className="block text-gray-700 font-semibold mb-2">
+                  Notes
+                </label>
+                <textarea
+                  id="sehriNotes"
+                  name="notes"
+                  rows="4"
+                  value={sehriRequestData.notes}
+                  onChange={handleSehriRequestChange}
+                  placeholder="Any dietary needs or special notes"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
+                ></textarea>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSehriRequestForm(false)}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl`}
+                >
+                  Submit Sehri Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-xl w-full max-h-[94vh] sm:max-h-[90vh] overflow-y-auto">
+            <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">Share Feedback</h2>
+                  <p className={`${headerSubTextClass} text-sm`}>
+                    Help us improve the Sehri Finder experience.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowFeedbackForm(false)}
+                  className="hover:bg-white/20 rounded-full p-2 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleFeedbackSubmit} className="p-4 sm:p-6 space-y-5">
+              <div>
+                <label htmlFor="feedbackName" className="block text-gray-700 font-semibold mb-2">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="feedbackName"
+                  name="name"
+                  value={feedbackData.name}
+                  onChange={handleFeedbackChange}
+                  required
+                  placeholder="Your name"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="feedbackEmail" className="block text-gray-700 font-semibold mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="feedbackEmail"
+                    name="email"
+                    value={feedbackData.email}
+                    onChange={handleFeedbackChange}
+                    placeholder="you@example.com"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="feedbackRating" className="block text-gray-700 font-semibold mb-2">
+                    Rating <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="feedbackRating"
+                    name="rating"
+                    value={feedbackData.rating}
+                    onChange={handleFeedbackChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  >
+                    <option value="5">5 - Excellent</option>
+                    <option value="4">4 - Good</option>
+                    <option value="3">3 - Average</option>
+                    <option value="2">2 - Needs Improvement</option>
+                    <option value="1">1 - Poor</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="feedbackMessage" className="block text-gray-700 font-semibold mb-2">
+                  Feedback Message <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="feedbackMessage"
+                  name="message"
+                  rows="5"
+                  value={feedbackData.message}
+                  onChange={handleFeedbackChange}
+                  required
+                  placeholder="What can we improve?"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
+                ></textarea>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFeedbackForm(false)}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl`}
+                >
+                  Submit Feedback
                 </button>
               </div>
             </form>
@@ -1104,6 +1697,14 @@ function App() {
             <p className="text-xs text-gray-400 mt-2">
               Prayer times may vary. Please confirm with your local mosque.
             </p>
+            <a
+              href={DONATION_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-3 text-sm font-semibold text-emerald-300 hover:text-emerald-200 transition-colors"
+            >
+              Support this project - Donate
+            </a>
           </div>
           
           {/* Visitor Counter */}
@@ -1125,3 +1726,4 @@ function App() {
 }
 
 export default App;
+

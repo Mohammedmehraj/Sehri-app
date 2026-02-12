@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Find Sehri restaurants in Bangalore",
   "private": true,
+  "proxy": "http://127.0.0.1:8000",
   "dependencies": {
     "dotenv": "^17.2.4",
     "react": "^18.2.0",
