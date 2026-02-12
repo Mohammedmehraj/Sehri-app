@@ -111,7 +111,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState(null);
   const [showRequestForm, setShowRequestForm] = useState(false);
-  const [activeSection, setActiveSection] = useState('home'); // 'home', 'about', 'livestream'
+  const [activeSection, setActiveSection] = useState('home'); // 'home', 'about'
   const [showChatbot, setShowChatbot] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { type: 'bot', text: 'Assalamu Alaikum! 🌙 I\'m here to help you with Sehri information, prayer times, and Ramadan queries. How can I assist you today?' }
@@ -214,7 +214,7 @@ function App() {
 
     return () => clearInterval(interval);
   }, [prayerTimes, calculateNextPrayer]);
-  
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -350,143 +350,134 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-lg sticky top-0 z-30">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+        <div className="container mx-auto px-4 py-4 md:py-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-2">
-                🌙 Bangalore Sehri Finder
+              <h1 className="text-2xl md:text-3xl font-bold mb-1">
+                Bangalore Sehri Finder
               </h1>
-              <p className="text-indigo-100 text-sm md:text-base">
+              <p className="text-indigo-100 text-xs md:text-sm">
                 Find Sehri at Masjids, Volunteers & Restaurants
               </p>
             </div>
-            {!loading && nextPrayer && (
-              <div className="mt-4 md:mt-0 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-3 border border-white/30">
-                <p className="text-xs uppercase tracking-wide text-indigo-100 mb-1">
-                  Next Prayer
-                </p>
-                <p className="text-2xl font-bold flex items-center gap-2">
-                  <span>{nextPrayer.icon}</span> {nextPrayer.time}
-                </p>
-                <p className="text-sm text-indigo-100 mt-1">{nextPrayer.name}</p>
-                <p className="text-xs text-indigo-200 mt-1">In {nextPrayer.timeUntil}</p>
-              </div>
-            )}
-          </div>
 
-          {/* Navigation Menu */}
-          <nav className="flex flex-wrap gap-2 mb-6">
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation */}
+      <section className="bg-white/85 backdrop-blur-sm border-b border-purple-100">
+        <div className="container mx-auto px-4 py-3">
+          <nav className="flex gap-2 overflow-x-auto pb-1">
             <button
               onClick={() => setActiveSection('home')}
-              className={`px-6 py-2 rounded-full font-semibold transition-all ${
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'home'
-                  ? 'bg-white text-purple-600 shadow-lg'
-                  : 'bg-white/20 hover:bg-white/30 text-white'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md'
+                  : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
               }`}
             >
-              🏠 Home
-            </button>
-            <button
-              onClick={() => setActiveSection('livestream')}
-              className={`px-6 py-2 rounded-full font-semibold transition-all ${
-                activeSection === 'livestream'
-                  ? 'bg-white text-purple-600 shadow-lg'
-                  : 'bg-white/20 hover:bg-white/30 text-white'
-              }`}
-            >
-              📺 Live Stream
+              Home
             </button>
             <button
               onClick={() => {
                 setActiveSection('home');
                 setShowRequestForm(true);
               }}
-              className="px-6 py-2 rounded-full font-semibold transition-all bg-white/20 hover:bg-white/30 text-white"
+              className="px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border bg-white text-purple-700 border-purple-200 hover:bg-purple-50"
             >
-              ➕ Request Sehri
+              Request Sehri
             </button>
             <button
               onClick={() => setActiveSection('about')}
-              className={`px-6 py-2 rounded-full font-semibold transition-all ${
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'about'
-                  ? 'bg-white text-purple-600 shadow-lg'
-                  : 'bg-white/20 hover:bg-white/30 text-white'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md'
+                  : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
               }`}
             >
-              ℹ️ About Us
+              About Us
             </button>
           </nav>
-
-          {/* Prayer Times Grid */}
-          {loading ? (
-            <div className="text-center py-4">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-white border-t-transparent"></div>
-              <p className="mt-2 text-sm text-indigo-100">Loading prayer times...</p>
-            </div>
-          ) : prayerTimes ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">🌅</span>
-                  <p className="text-xs font-semibold text-indigo-100">Fajr</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Fajr}</p>
-                <p className="text-xs text-indigo-200">Sehri Ends</p>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">☀️</span>
-                  <p className="text-xs font-semibold text-indigo-100">Sunrise</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Sunrise}</p>
-                <p className="text-xs text-indigo-200">Shuruq</p>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">🕌</span>
-                  <p className="text-xs font-semibold text-indigo-100">Dhuhr</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Dhuhr}</p>
-                <p className="text-xs text-indigo-200">Noon</p>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">🌤️</span>
-                  <p className="text-xs font-semibold text-indigo-100">Asr</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Asr}</p>
-                <p className="text-xs text-indigo-200">Afternoon</p>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">🌆</span>
-                  <p className="text-xs font-semibold text-indigo-100">Maghrib</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Maghrib}</p>
-                <p className="text-xs text-indigo-200">Iftar Time</p>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">🌙</span>
-                  <p className="text-xs font-semibold text-indigo-100">Isha</p>
-                </div>
-                <p className="text-lg font-bold">{prayerTimes.Isha}</p>
-                <p className="text-xs text-indigo-200">Night</p>
-              </div>
-            </div>
-          ) : null}
-
-          <p className="text-center text-xs text-indigo-100 mt-4">{today}</p>
         </div>
-      </header>
-
+      </section>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-6 md:py-8">
+        {/* Prayer Times Section */}
+        <section className="mb-6">
+          <div className="bg-white rounded-2xl border border-purple-100 shadow-sm p-4 sm:p-5">
+            {!loading && nextPrayer && (
+              <div className="mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg px-3 py-2.5">
+                <p className="text-xs uppercase tracking-wide text-indigo-100 mb-1">Next Prayer</p>
+                <p className="text-xl font-bold flex items-center gap-2">
+                  <span>{nextPrayer.icon}</span>
+                  {nextPrayer.time}
+                </p>
+                <p className="text-xs sm:text-sm text-indigo-100 mt-1">{nextPrayer.name}</p>
+                <p className="text-xs text-indigo-200 mt-1">In {nextPrayer.timeUntil}</p>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="text-center py-4">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-purple-200 border-t-purple-600"></div>
+                <p className="mt-2 text-sm text-gray-600">Loading prayer times...</p>
+              </div>
+            ) : prayerTimes ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">🌅</span>
+                    <p className="text-xs font-semibold text-gray-700">Fajr</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Fajr}</p>
+                  <p className="text-xs text-gray-500">Sehri Ends</p>
+                </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">☀️</span>
+                    <p className="text-xs font-semibold text-gray-700">Sunrise</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Sunrise}</p>
+                  <p className="text-xs text-gray-500">Shuruq</p>
+                </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">🕌</span>
+                    <p className="text-xs font-semibold text-gray-700">Dhuhr</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Dhuhr}</p>
+                  <p className="text-xs text-gray-500">Noon</p>
+                </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">🌤️</span>
+                    <p className="text-xs font-semibold text-gray-700">Asr</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Asr}</p>
+                  <p className="text-xs text-gray-500">Afternoon</p>
+                </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">🌇</span>
+                    <p className="text-xs font-semibold text-gray-700">Maghrib</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Maghrib}</p>
+                  <p className="text-xs text-gray-500">Iftar Time</p>
+                </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-2.5 border border-indigo-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">🌙</span>
+                    <p className="text-xs font-semibold text-gray-700">Isha</p>
+                  </div>
+                  <p className="text-base font-bold text-gray-900">{prayerTimes.Isha}</p>
+                  <p className="text-xs text-gray-500">Night</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         {/* Home Section */}
         {activeSection === 'home' && (
           <>
@@ -531,15 +522,15 @@ function App() {
             </div>
 
             {/* Provider Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
               {filteredProviders.map((provider) => (
                 <div
                   key={provider.id}
                   className="bg-white rounded-xl shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden border border-gray-100"
                 >
                   {/* Card Image/Icon */}
-                  <div className="bg-gradient-to-br from-purple-100 to-pink-100 h-32 flex items-center justify-center relative">
-                    <span className="text-6xl">{provider.image}</span>
+                  <div className="bg-gradient-to-br from-purple-100 to-pink-100 h-28 sm:h-32 flex items-center justify-center relative">
+                    <span className="text-5xl sm:text-6xl">{provider.image}</span>
                     <div className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold ${
                       provider.pricing === 'Free' ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'
                     }`}>
@@ -659,7 +650,7 @@ function App() {
             {/* No Results Message */}
             {filteredProviders.length === 0 && (
               <div className="text-center py-12">
-                <div className="text-6xl mb-4">🔍</div>
+                <div className="text-5xl sm:text-6xl mb-4">🔍</div>
                 <h3 className="text-2xl font-bold text-gray-700 mb-2">
                   No Sehri providers found
                 </h3>
@@ -671,82 +662,13 @@ function App() {
           </>
         )}
 
-        {/* Live Stream Section */}
-        {activeSection === 'livestream' && (
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-8">
-              <div className="text-6xl mb-4">🕋</div>
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-                Live from Mecca
-              </h2>
-              <p className="text-lg text-gray-600">
-                Watch the blessed Haramain live 24/7
-              </p>
-            </div>
-
-            <div className="space-y-8">
-              {/* Mecca Live Stream */}
-              <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="bg-gradient-to-r from-green-600 to-teal-600 text-white p-4">
-                  <div className="flex items-center justify-center gap-3">
-                    <span className="text-3xl">🕋</span>
-                    <div>
-                      <h3 className="text-2xl font-bold">Masjid al-Haram, Mecca</h3>
-                      <p className="text-green-100 text-sm">Live 24/7 from the Holy Kaaba</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="relative" style={{ paddingBottom: '56.25%', height: 0 }}>
-                  <iframe
-                    className="absolute top-0 left-0 w-full h-full"
-                    src="https://makkahlive.net/makkahlive.aspx"
-                    title="Mecca Live Stream"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
-                </div>
-                <div className="p-4 bg-gray-50">
-                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                      LIVE
-                    </span>
-                    <span>•</span>
-                    <span>Mecca Al-Mukarramah, Saudi Arabia</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Info Section */}
-              <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
-                <div className="flex items-start gap-4">
-                  <div className="text-3xl">ℹ️</div>
-                  <div>
-                    <h4 className="font-bold text-gray-800 mb-2">About This Live Stream</h4>
-                    <p className="text-gray-600 text-sm leading-relaxed">
-                      This live stream brings you closer to the blessed Kaaba from the comfort of your home. 
-                      Perfect for feeling connected during Ramadan, watching Taraweeh prayers, or simply seeking 
-                      spiritual peace. The stream is available 24/7 and shows live views of the Holy Kaaba in 
-                      Mecca Al-Mukarramah.
-                    </p>
-                    <p className="text-gray-500 text-xs mt-3">
-                      Note: Streams are provided by MakkahLive.net. Internet connection required.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* About Us Section */}
         {activeSection === 'about' && (
           <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12">
+            <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 md:p-12">
               <div className="text-center mb-8">
-                <div className="text-6xl mb-4">🌙</div>
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+                <div className="text-5xl sm:text-6xl mb-4">🌙</div>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-4">
                   About Bangalore Sehri Finder
                 </h2>
                 <p className="text-lg text-gray-600">
@@ -766,7 +688,7 @@ function App() {
                     in Bangalore with Masjids offering free Sehri, volunteer groups serving the community, 
                     and restaurants with early morning services. Whether you're looking for free community 
                     Sehri or restaurants, we make it easy to find the perfect place for your pre-fast meal. 
-    We also provide live streams from Mecca to keep you spiritually connected during Ramadan.
+
                   </p>
                 </div>
 
@@ -782,7 +704,7 @@ function App() {
                     </li>
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
-                      <span><strong>Live Streams:</strong> Watch Mecca live 24/7 from Masjid al-Haram</span>
+                      <span><strong>Community Guidance:</strong> Practical help for Sehri, prayer times, and Ramadan routines</span>
                     </li>
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
@@ -859,13 +781,13 @@ function App() {
             </div>
           </div>
         )}
-      </main>
+          </main>
 
       {/* Floating Action Button */}
       {activeSection === 'home' && (
         <button
           onClick={() => setShowRequestForm(true)}
-          className="fixed bottom-8 right-8 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group"
+          className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -879,7 +801,7 @@ function App() {
       {/* Chatbot Floating Button */}
       <button
         onClick={() => setShowChatbot(!showChatbot)}
-        className="fixed bottom-8 left-8 bg-gradient-to-r from-green-600 to-teal-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40"
+        className="fixed bottom-4 left-4 sm:bottom-8 sm:left-8 bg-gradient-to-r from-green-600 to-teal-600 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40"
         title="Chat with us"
       >
         {showChatbot ? (
@@ -895,12 +817,12 @@ function App() {
 
       {/* Chatbot Modal */}
       {showChatbot && (
-        <div className="fixed bottom-24 left-8 w-96 max-w-[calc(100vw-4rem)] bg-white rounded-2xl shadow-2xl z-50 flex flex-col" style={{ height: '500px', maxHeight: 'calc(100vh - 10rem)' }}>
+        <div className="fixed inset-x-2 top-16 bottom-20 sm:inset-x-auto sm:top-auto sm:bottom-24 sm:left-8 sm:w-96 sm:max-w-[calc(100vw-4rem)] sm:h-[500px] sm:max-h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-2xl z-50 flex flex-col">
           {/* Chatbot Header */}
-          <div className="bg-gradient-to-r from-green-600 to-teal-600 text-white p-4 rounded-t-2xl flex items-center justify-between">
+          <div className="bg-gradient-to-r from-green-600 to-teal-600 text-white p-3 sm:p-4 rounded-t-2xl flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                <span className="text-2xl">�</span>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-full flex items-center justify-center">
+                <span className="text-2xl">🧕</span>
               </div>
               <div>
                 <h3 className="font-bold">Hala AI Assistant</h3>
@@ -918,7 +840,7 @@ function App() {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50">
             {chatMessages.map((message, index) => (
               <div
                 key={index}
@@ -930,7 +852,7 @@ function App() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg whitespace-pre-line ${
+                  className={`max-w-[85%] sm:max-w-[80%] p-3 rounded-lg whitespace-pre-line ${
                     message.type === 'user'
                       ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-br-none'
                       : 'bg-white text-gray-800 shadow-md rounded-bl-none border border-gray-200'
@@ -944,7 +866,7 @@ function App() {
           </div>
 
           {/* Chat Input */}
-          <form onSubmit={handleChatSubmit} className="p-4 bg-white border-t border-gray-200 rounded-b-2xl">
+          <form onSubmit={handleChatSubmit} className="p-3 sm:p-4 bg-white border-t border-gray-200 rounded-b-2xl">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -968,13 +890,13 @@ function App() {
 
       {/* Request Form Modal */}
       {showRequestForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[94vh] sm:max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6 rounded-t-2xl sticky top-0">
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 sm:p-6 rounded-t-2xl sticky top-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2">🍽️ Request Sehri Service</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">🍽️ Register as Sehri Provider</h2>
                   <p className="text-purple-100 text-sm">
                     Know a Masjid, Volunteer group, or restaurant serving Sehri? Help the community!
                   </p>
@@ -991,7 +913,7 @@ function App() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleFormSubmit} className="p-4 sm:p-6 space-y-5">
               {/* Provider Name */}
               <div>
                 <label htmlFor="providerName" className="block text-gray-700 font-semibold mb-2">
