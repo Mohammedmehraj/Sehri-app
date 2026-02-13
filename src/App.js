@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import PrayerCountdownRing from './components/PrayerCountdownRing';
 
 const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').trim();
 const PROVIDERS_API_URL = (process.env.REACT_APP_PROVIDERS_API_URL || '/api/providers').trim();
+const AUTH_API_BASE_URL = (process.env.REACT_APP_AUTH_API_URL || '/api/auth').trim();
 const DONATION_URL = (process.env.REACT_APP_DONATION_URL || 'https://www.launchgood.com').trim();
 const PROVIDERS_PAGE_SIZE = Math.max(
   1,
   parseInt(process.env.REACT_APP_PROVIDERS_PAGE_SIZE || '12', 10) || 12
 );
+const AUTH_TOKEN_STORAGE_KEY = 'sehriFinder_authToken';
 
 const SKY_GRADIENT_BY_PERIOD = {
   fajr: 'bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900',
@@ -28,6 +30,42 @@ const UI_GRADIENT_BY_PERIOD = {
 };
 
 const DARK_UI_PERIODS = new Set(['fajr', 'maghrib', 'isha']);
+const CAPTCHA_FORM_KEYS = ['auth', 'provider', 'sehri', 'feedback'];
+
+function createCaptchaChallenge() {
+  const left = Math.floor(Math.random() * 8) + 2;
+  const right = Math.floor(Math.random() * 8) + 2;
+  const operations = ['+', '-'];
+  const operation = operations[Math.floor(Math.random() * operations.length)];
+
+  if (operation === '-') {
+    const high = Math.max(left, right);
+    const low = Math.min(left, right);
+    return {
+      question: `${high} - ${low}`,
+      answer: high - low,
+    };
+  }
+
+  return {
+    question: `${left} + ${right}`,
+    answer: left + right,
+  };
+}
+
+function createCaptchaChallengeMap() {
+  return CAPTCHA_FORM_KEYS.reduce((acc, key) => {
+    acc[key] = createCaptchaChallenge();
+    return acc;
+  }, {});
+}
+
+function createCaptchaTextMap() {
+  return CAPTCHA_FORM_KEYS.reduce((acc, key) => {
+    acc[key] = '';
+    return acc;
+  }, {});
+}
 
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
@@ -134,16 +172,35 @@ const mockProviders = [
 
 function App() {
   const [searchLocation, setSearchLocation] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [prayerTimes, setPrayerTimes] = useState(null);
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState(null);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [showSehriRequestForm, setShowSehriRequestForm] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeSection, setActiveSection] = useState('home'); // 'home', 'about'
   const [showChatbot, setShowChatbot] = useState(false);
-  const [skyThemeClass, setSkyThemeClass] = useState(SKY_GRADIENT_BY_PERIOD.isha);
-  const [activePrayerPeriod, setActivePrayerPeriod] = useState('isha');
+  const skyThemeClass = SKY_GRADIENT_BY_PERIOD.isha;
+  const [authToken, setAuthToken] = useState(() => {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+  });
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authFormData, setAuthFormData] = useState({
+    name: '',
+    email: '',
+    password: ''
+  });
+  const [captchaByForm, setCaptchaByForm] = useState(() => createCaptchaChallengeMap());
+  const [captchaInputByForm, setCaptchaInputByForm] = useState(() => createCaptchaTextMap());
+  const [captchaErrorByForm, setCaptchaErrorByForm] = useState(() => createCaptchaTextMap());
   const [chatMessages, setChatMessages] = useState([
     { type: 'bot', text: 'Assalamu Alaikum! 🌙 I\'m here to help you with Sehri information, prayer times, and Ramadan queries. How can I assist you today?' }
   ]);
@@ -292,6 +349,54 @@ function App() {
     }
   }, []);
 
+  // Restore authenticated user from token
+  useEffect(() => {
+    if (!authToken) {
+      setAuthUser(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
+
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch(`${authBaseUrl}/me`, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Auth session check failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+        if (!payload?.user) {
+          throw new Error('Invalid auth response');
+        }
+
+        setAuthUser(payload.user);
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return;
+        }
+
+        console.error('Auth session restore failed:', error);
+        setAuthUser(null);
+        setAuthToken('');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        }
+      }
+    };
+
+    fetchCurrentUser();
+    return () => controller.abort();
+  }, [authToken]);
+
   // Load providers from backend API
   useEffect(() => {
     const controller = new AbortController();
@@ -304,9 +409,11 @@ function App() {
         const queryParams = new URLSearchParams();
         queryParams.set('page', String(providersPage));
         queryParams.set('page_size', String(PROVIDERS_PAGE_SIZE));
-        const trimmedLocation = searchLocation.trim();
-        if (trimmedLocation) {
-          queryParams.set('location', trimmedLocation);
+        const trimmedSearchLocation = searchLocation.trim();
+        const trimmedLocationFilter = locationFilter.trim();
+        const effectiveLocation = trimmedLocationFilter || trimmedSearchLocation;
+        if (effectiveLocation) {
+          queryParams.set('location', effectiveLocation);
         }
 
         const separator = PROVIDERS_API_URL.includes('?') ? '&' : '?';
@@ -387,9 +494,15 @@ function App() {
         console.error('Providers fetch error:', error);
         setProvidersError(error.message || 'Failed to load providers');
 
-        const fallbackFiltered = mockProviders.filter(provider =>
-          (provider.location || '').toLowerCase().includes(searchLocation.toLowerCase())
-        );
+        const trimmedSearchLocation = searchLocation.trim();
+        const trimmedLocationFilter = locationFilter.trim();
+        const effectiveLocation = (trimmedLocationFilter || trimmedSearchLocation).toLowerCase();
+        const fallbackFiltered = mockProviders.filter(provider => {
+          if (!effectiveLocation) {
+            return true;
+          }
+          return (provider.location || '').toLowerCase().includes(effectiveLocation);
+        });
         const fallbackTotal = fallbackFiltered.length;
         const fallbackTotalPages = Math.max(1, Math.ceil(fallbackTotal / PROVIDERS_PAGE_SIZE));
         const safePage = Math.min(providersPage, fallbackTotalPages);
@@ -412,9 +525,31 @@ function App() {
       clearTimeout(debounceId);
       controller.abort();
     };
-  }, [providersPage, searchLocation]);
+  }, [providersPage, searchLocation, locationFilter]);
   
   const filteredProviders = providers;
+  const locationFilterOptions = useMemo(() => {
+    const byKey = new Map();
+
+    const registerLocation = (value) => {
+      const normalized = String(value || '').trim();
+      if (!normalized) {
+        return;
+      }
+      const key = normalized.toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, normalized);
+      }
+    };
+
+    mockProviders.forEach((provider) => registerLocation(provider.location));
+    providers.forEach((provider) => registerLocation(provider.location));
+    registerLocation(searchLocation);
+    registerLocation(locationFilter);
+
+    return Array.from(byKey.values()).sort((left, right) => left.localeCompare(right));
+  }, [providers, searchLocation, locationFilter]);
+
   const currentProvidersPage = Math.min(providersPage, providersTotalPages);
   const providersStart = providersTotal === 0 ? 0 : ((currentProvidersPage - 1) * PROVIDERS_PAGE_SIZE) + 1;
   const providersEnd = Math.min(currentProvidersPage * PROVIDERS_PAGE_SIZE, providersTotal);
@@ -435,6 +570,212 @@ function App() {
     setProvidersPage(prev => Math.min(providersTotalPages, prev + 1));
   };
 
+  const refreshCaptcha = useCallback((formKey) => {
+    setCaptchaByForm(prev => ({
+      ...prev,
+      [formKey]: createCaptchaChallenge(),
+    }));
+    setCaptchaInputByForm(prev => ({
+      ...prev,
+      [formKey]: '',
+    }));
+    setCaptchaErrorByForm(prev => ({
+      ...prev,
+      [formKey]: '',
+    }));
+  }, []);
+
+  const handleCaptchaInputChange = useCallback((formKey, value) => {
+    setCaptchaInputByForm(prev => ({
+      ...prev,
+      [formKey]: value,
+    }));
+    setCaptchaErrorByForm(prev => ({
+      ...prev,
+      [formKey]: '',
+    }));
+  }, []);
+
+  const validateCaptcha = useCallback((formKey) => {
+    const challenge = captchaByForm[formKey];
+    const rawValue = (captchaInputByForm[formKey] || '').trim();
+
+    if (!challenge) {
+      setCaptchaErrorByForm(prev => ({
+        ...prev,
+        [formKey]: 'Captcha is unavailable. Refresh and try again.',
+      }));
+      return false;
+    }
+
+    if (!rawValue) {
+      setCaptchaErrorByForm(prev => ({
+        ...prev,
+        [formKey]: 'Please solve the captcha.',
+      }));
+      return false;
+    }
+
+    if (Number(rawValue) !== Number(challenge.answer)) {
+      setCaptchaByForm(prev => ({
+        ...prev,
+        [formKey]: createCaptchaChallenge(),
+      }));
+      setCaptchaInputByForm(prev => ({
+        ...prev,
+        [formKey]: '',
+      }));
+      setCaptchaErrorByForm(prev => ({
+        ...prev,
+        [formKey]: 'Captcha answer is incorrect. Try the new challenge.',
+      }));
+      return false;
+    }
+
+    setCaptchaErrorByForm(prev => ({
+      ...prev,
+      [formKey]: '',
+    }));
+    return true;
+  }, [captchaByForm, captchaInputByForm, refreshCaptcha]);
+
+  const parseApiError = async (response, fallbackMessage) => {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      return data.detail || data.error || data.message || fallbackMessage;
+    }
+    const rawText = await response.text();
+    return rawText || fallbackMessage;
+  };
+
+  const handleAuthInputChange = (e) => {
+    const { name, value } = e.target;
+    setAuthFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+    setAuthError('');
+    setAuthLoading(false);
+    refreshCaptcha('auth');
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+
+    const email = authFormData.email.trim();
+    const password = authFormData.password;
+    const name = authFormData.name.trim();
+
+    if (!email || !password) {
+      setAuthError('Email and password are required.');
+      return;
+    }
+    if (isRegisterMode && !name) {
+      setAuthError('Name is required.');
+      return;
+    }
+    if (!validateCaptcha('auth')) {
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
+
+      if (isRegisterMode) {
+        const registerResponse = await fetch(`${authBaseUrl}/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name, email, password }),
+        });
+
+        if (!registerResponse.ok) {
+          throw new Error(await parseApiError(registerResponse, 'Registration failed.'));
+        }
+      }
+
+      const loginResponse = await fetch(`${authBaseUrl}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!loginResponse.ok) {
+        throw new Error(await parseApiError(loginResponse, 'Login failed.'));
+      }
+
+      const payload = await loginResponse.json();
+      if (!payload?.token || !payload?.user) {
+        throw new Error('Invalid auth response.');
+      }
+
+      setAuthToken(payload.token);
+      setAuthUser(payload.user);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.token);
+      }
+
+      setAuthFormData({ name: '', email: '', password: '' });
+      refreshCaptcha('auth');
+      closeAuthModal();
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      setAuthError(error.message || 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const token = authToken;
+    setAuthUser(null);
+    setAuthToken('');
+    setShowRequestForm(false);
+    setShowSehriRequestForm(false);
+    setShowFeedbackForm(false);
+    setShowAuthModal(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
+      await fetch(`${authBaseUrl}/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    }
+  };
+
+  const requireAuth = useCallback((action) => {
+    if (authUser) {
+      action();
+      return;
+    }
+    setAuthError('Please login to continue.');
+    setIsRegisterMode(false);
+    setShowAuthModal(true);
+  }, [authUser]);
+
   // Handle form input changes
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -447,6 +788,9 @@ function App() {
   // Handle form submission
   const handleFormSubmit = (e) => {
     e.preventDefault();
+    if (!validateCaptcha('provider')) {
+      return;
+    }
     
     // In a real app, this would send data to a backend
     console.log('Sehri Provider Request Submitted:', formData);
@@ -466,6 +810,7 @@ function App() {
       pricing: 'Free',
       additionalInfo: ''
     });
+    refreshCaptcha('provider');
     
     setShowRequestForm(false);
   };
@@ -480,6 +825,9 @@ function App() {
 
   const handleSehriRequestSubmit = (e) => {
     e.preventDefault();
+    if (!validateCaptcha('sehri')) {
+      return;
+    }
 
     console.log('Sehri Support Request Submitted:', sehriRequestData);
     alert(`Thanks ${sehriRequestData.fullName}! Your Sehri request has been received.`);
@@ -492,6 +840,7 @@ function App() {
       neededBy: '',
       notes: ''
     });
+    refreshCaptcha('sehri');
     setShowSehriRequestForm(false);
   };
 
@@ -505,6 +854,9 @@ function App() {
 
   const handleFeedbackSubmit = (e) => {
     e.preventDefault();
+    if (!validateCaptcha('feedback')) {
+      return;
+    }
 
     console.log('Feedback Submitted:', feedbackData);
     alert('Thank you for your feedback! We appreciate your support.');
@@ -515,6 +867,7 @@ function App() {
       rating: '5',
       message: ''
     });
+    refreshCaptcha('feedback');
     setShowFeedbackForm(false);
   };
 
@@ -548,17 +901,14 @@ function App() {
       body: JSON.stringify({ message: chatInput })
     })
     .then(async response => {
-      const contentType = response.headers.get('content-type') || '';
       if (!response.ok) {
-        const errorText = contentType.includes('application/json')
-          ? (await response.json()).error
-          : await response.text();
-        throw new Error(errorText || `Request failed with status ${response.status}`);
+        throw new Error(await parseApiError(response, `Request failed with status ${response.status}`));
       }
 
+      const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         const rawText = await response.text();
-        throw new Error(rawText || 'Invalid response from server');
+        return { response: rawText || 'Received empty response from server.' };
       }
 
       return response.json();
@@ -578,13 +928,12 @@ function App() {
     setChatInput('');
   };
 
-  const handlePrayerPeriodChange = useCallback((period) => {
-    setActivePrayerPeriod(period);
-    setSkyThemeClass(SKY_GRADIENT_BY_PERIOD[period] || SKY_GRADIENT_BY_PERIOD.isha);
+  const handlePrayerPeriodChange = useCallback(() => {
+    // Keep the website theme static regardless of prayer period.
   }, []);
 
-  const headerCardGradientClass = UI_GRADIENT_BY_PERIOD[activePrayerPeriod] || UI_GRADIENT_BY_PERIOD.isha;
-  const isDarkUiTheme = DARK_UI_PERIODS.has(activePrayerPeriod);
+  const headerCardGradientClass = UI_GRADIENT_BY_PERIOD.isha;
+  const isDarkUiTheme = DARK_UI_PERIODS.has('isha');
   const headerTextClass = isDarkUiTheme ? 'text-white' : 'text-slate-900';
   const headerSubTextClass = isDarkUiTheme ? 'text-white/85' : 'text-slate-800';
   const navSectionClass = isDarkUiTheme
@@ -606,9 +955,45 @@ function App() {
   const overlayButtonClass = isDarkUiTheme
     ? 'border-white/40 bg-white/10 text-white hover:bg-white/20'
     : 'border-white/80 bg-white/60 text-slate-900 hover:bg-white/80';
+  const captchaBlockClass = 'bg-gray-50 border-gray-200';
+  const captchaTextClass = 'text-gray-800';
+
+  const renderCaptchaField = (formKey) => {
+    const challenge = captchaByForm[formKey];
+    const value = captchaInputByForm[formKey] || '';
+    const error = captchaErrorByForm[formKey] || '';
+
+    return (
+      <div className={`rounded-lg border p-3 ${captchaBlockClass}`}>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className={`text-sm font-semibold ${captchaTextClass}`}>
+            Captcha: solve {challenge?.question || '--'}
+          </p>
+          <button
+            type="button"
+            onClick={() => refreshCaptcha(formKey)}
+            className="text-xs font-semibold px-2.5 py-1 rounded-md transition-colors bg-gray-200 text-gray-800 hover:bg-gray-300"
+          >
+            Refresh
+          </button>
+        </div>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => handleCaptchaInputChange(formKey, e.target.value)}
+          placeholder="Enter answer"
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all text-sm bg-white text-gray-900"
+        />
+        {error && (
+          <p className="text-xs text-red-600 mt-2">{error}</p>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className={`min-h-screen transition-all duration-700 ${skyThemeClass}`}>
+    <div className={`theme-static min-h-screen transition-all duration-700 ${skyThemeClass}`}>
       {/* Header */}
       <header className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} transition-all duration-700 shadow-lg sticky top-0 z-30`}>
         <div className="container mx-auto px-4 py-4 md:py-5">
@@ -640,50 +1025,6 @@ function App() {
             >
               Home
             </button>
-            <button
-              onClick={() => {
-                setActiveSection('home');
-                setShowRequestForm(true);
-              }}
-              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
-                showRequestForm ? navActiveButtonClass : navInactiveButtonClass
-              }`}
-            >
-              Register as Sehri Provider
-            </button>
-            <button
-              onClick={() => {
-                setActiveSection('home');
-                setShowSehriRequestForm(true);
-              }}
-              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
-            >
-              Request Sehri
-            </button>
-            <button
-              onClick={() => setShowFeedbackForm(true)}
-              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
-            >
-              Feedback
-            </button>
-            <button
-              onClick={() => setActiveSection('about')}
-              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
-                activeSection === 'about'
-                  ? navActiveButtonClass
-                  : navInactiveButtonClass
-              }`}
-            >
-              About Us
-            </button>
-            <a
-              href={DONATION_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
-            >
-              Donate
-            </a>
           </nav>
         </div>
       </section>
@@ -769,36 +1110,61 @@ function App() {
           <>
             {/* Search Bar */}
             <div className="mb-8">
-              <div className="max-w-2xl mx-auto">
-                <label htmlFor="search" className={`block ${overlayTextClass} font-semibold mb-2`}>
-                  Search by Location
-                </label>
-                <div className="relative">
-                  <input
-                    id="search"
-                    type="text"
-                    placeholder="Enter location (e.g., Koramangala, Indiranagar...)"
-                    value={searchLocation}
+              <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="search" className={`block ${overlayTextClass} font-semibold mb-2`}>
+                    Search by Location
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="search"
+                      type="text"
+                      placeholder="Enter location (e.g., Koramangala, Indiranagar...)"
+                      value={searchLocation}
+                      onChange={(e) => {
+                        setSearchLocation(e.target.value);
+                        setProvidersPageLoadingDirection('');
+                        setProvidersPage(1);
+                      }}
+                      className="w-full px-4 py-3 pl-12 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                    <svg
+                      className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 ${overlayIconClass}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="locationFilter" className={`block ${overlayTextClass} font-semibold mb-2`}>
+                    Filter by Location
+                  </label>
+                  <select
+                    id="locationFilter"
+                    value={locationFilter}
                     onChange={(e) => {
-                      setSearchLocation(e.target.value);
+                      setLocationFilter(e.target.value);
                       setProvidersPageLoadingDirection('');
                       setProvidersPage(1);
                     }}
-                    className="w-full px-4 py-3 pl-12 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
-                  />
-                  <svg 
-                    className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 ${overlayIconClass}`}
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
+                    className="w-full px-4 py-3 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all bg-white"
                   >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
-                    />
-                  </svg>
+                    <option value="">All Locations</option>
+                    {locationFilterOptions.map((locationOption) => (
+                      <option key={locationOption} value={locationOption}>
+                        {locationOption}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -807,7 +1173,16 @@ function App() {
             <div className="mb-6">
               <p className={`${overlayTextClass} text-center`}>
                 Found <span className={`font-bold ${overlayStrongTextClass}`}>{providersTotal}</span> Sehri providers
-                {searchLocation && <span> in "<span className="font-semibold">{searchLocation}</span>"</span>}
+                {searchLocation && (
+                  <span>
+                    {' '}for "<span className="font-semibold">{searchLocation}</span>"
+                  </span>
+                )}
+                {locationFilter && (
+                  <span>
+                    {' '}filtered to "<span className="font-semibold">{locationFilter}</span>"
+                  </span>
+                )}
                 {providersTotal > 0 && (
                   <span> (showing {providersStart}-{providersEnd})</span>
                 )}
@@ -988,7 +1363,7 @@ function App() {
                   No Sehri providers found
                 </h3>
                 <p className={overlayMutedTextClass}>
-                  Try searching for a different location like Shivajinagar, Koramangala, Indiranagar, or Whitefield
+                  Try a different search or choose another location filter like Shivajinagar, Koramangala, Indiranagar, or Whitefield
                 </p>
               </div>
             )}
@@ -1084,7 +1459,7 @@ function App() {
                   <button
                     onClick={() => {
                       setActiveSection('home');
-                      setShowRequestForm(true);
+                      requireAuth(() => setShowRequestForm(true));
                     }}
                     className={`${primaryTimingButtonClass} px-6 py-3 rounded-lg font-semibold transition-all shadow-lg`}
                   >
@@ -1119,7 +1494,7 @@ function App() {
       {/* Floating Action Button */}
       {activeSection === 'home' && (
         <button
-          onClick={() => setShowSehriRequestForm(true)}
+          onClick={() => requireAuth(() => setShowSehriRequestForm(true))}
           className={`fixed bottom-4 right-4 sm:bottom-8 sm:right-8 ${primaryTimingButtonClass} p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group`}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1218,6 +1593,123 @@ function App() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full max-h-[94vh] sm:max-h-[90vh] overflow-y-auto">
+            <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0 transition-all duration-700`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                    {isRegisterMode ? 'Create Account' : 'Login'}
+                  </h2>
+                  <p className={`${headerSubTextClass} text-sm`}>
+                    {isRegisterMode ? 'Register to submit Sehri requests and feedback.' : 'Login to continue.'}
+                  </p>
+                </div>
+                <button
+                  onClick={closeAuthModal}
+                  className={`${headerTextClass} hover:bg-white/20 rounded-full p-2 transition-colors`}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="p-4 sm:p-6 space-y-4">
+              {isRegisterMode && (
+                <div>
+                  <label htmlFor="authName" className="block text-gray-700 font-semibold mb-2">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="authName"
+                    name="name"
+                    value={authFormData.name}
+                    onChange={handleAuthInputChange}
+                    required={isRegisterMode}
+                    placeholder="Your full name"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="authEmail" className="block text-gray-700 font-semibold mb-2">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  id="authEmail"
+                  name="email"
+                  value={authFormData.email}
+                  onChange={handleAuthInputChange}
+                  required
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="authPassword" className="block text-gray-700 font-semibold mb-2">
+                  Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  id="authPassword"
+                  name="password"
+                  value={authFormData.password}
+                  onChange={handleAuthInputChange}
+                  required
+                  minLength={6}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                />
+              </div>
+
+              {renderCaptchaField('auth')}
+
+              {authError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {authError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeAuthModal}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
+                >
+                  {authLoading ? 'Please wait...' : (isRegisterMode ? 'Register' : 'Login')}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegisterMode(prev => !prev);
+                  setAuthError('');
+                }}
+                className="w-full text-sm text-purple-700 hover:text-purple-800 font-semibold transition-colors"
+              >
+                {isRegisterMode ? 'Already have an account? Login' : 'New here? Create an account'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1414,6 +1906,8 @@ function App() {
                 </div>
               </div>
 
+              {renderCaptchaField('provider')}
+
               {/* Submit Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
@@ -1555,6 +2049,8 @@ function App() {
                 ></textarea>
               </div>
 
+              {renderCaptchaField('sehri')}
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -1666,6 +2162,8 @@ function App() {
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
                 ></textarea>
               </div>
+
+              {renderCaptchaField('feedback')}
 
               <div className="flex gap-3 pt-2">
                 <button

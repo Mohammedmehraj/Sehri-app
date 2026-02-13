@@ -93,16 +93,26 @@ npm start
 2. Set these environment variables in Vercel Project Settings:
 	- `REACT_APP_CHATBOT_API_URL` (optional): `/api/chat` for same-project deployment
 	- `REACT_APP_PROVIDERS_API_URL` (optional): `/api/providers` for same-project deployment
+	- `REACT_APP_AUTH_API_URL` (optional): `/api/auth` for same-project deployment
 	- `REACT_APP_PROVIDERS_PAGE_SIZE` (optional): default `12`
+	- `OPENROUTER_API_KEY` (required for chatbot): OpenRouter API key
+	- `OPENROUTER_MODEL` (optional): defaults to `liquid/lfm-2.5-1.2b-instruct:free`
+	- `OPENROUTER_BASE_URL` (optional): defaults to `https://openrouter.ai/api/v1`
+	- `OPENROUTER_SITE_URL` (optional): site URL sent in request headers
+	- `OPENROUTER_APP_NAME` (optional): app name sent in request headers
 	- `MONGODB_URI` (required): MongoDB connection string
 	- `MONGODB_DB_NAME` (optional): if omitted, API auto-detects a DB with providers
 	- `MONGODB_PROVIDERS_COLLECTION` (optional): defaults to `providers` (case-insensitive)
+	- `MONGODB_USERS_COLLECTION` (optional): defaults to `users`
+	- `MONGODB_SESSIONS_COLLECTION` (optional): defaults to `auth_sessions`
+	- `AUTH_SECRET_KEY` (required for auth): random secret used to sign session token hashes
+	- `AUTH_SESSION_DAYS` (optional): defaults to `7`
 3. Deploy. This project serves frontend and Python API from `api/index.py` in one Vercel project.
 
 ### API Endpoints (Vercel)
 
 - `GET /api/hello` -> `{ "message": "Hello World" }`
-- `POST /api/chat` -> `{ "response": "Hello World" }`
+- `POST /api/chat` -> OpenRouter-backed chat response `{ "response": "..." }`
 - `GET /api/health` -> `{ "status": "ok" }`
 - `GET /api/providers` -> paginated providers from MongoDB
   - Query params: `page` (default `1`), `page_size` (default `12`), `location` (optional)
@@ -169,7 +179,7 @@ The live streams are embedded from MakkahLive.net, providing authentic 24/7 view
 - "How do I add a new location?"
 - "Tell me about live streams"
 
-The chatbot uses intelligent pattern matching to understand your questions and provide relevant, helpful responses.
+The chatbot is powered by OpenRouter and responds to user prompts with short, context-aware answers.
 
 ## Visitor Counter
 

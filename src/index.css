@@ -9,4 +9,120 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, #020617 0%, #0f172a 45%, #1e293b 100%);
+  color: #e2e8f0;
+}
+
+.theme-static {
+  --theme-surface: rgba(15, 23, 42, 0.82);
+  --theme-surface-strong: rgba(15, 23, 42, 0.94);
+  --theme-border: rgba(148, 163, 184, 0.36);
+  --theme-text: #e2e8f0;
+  --theme-muted: #cbd5e1;
+}
+
+.theme-static .bg-white,
+.theme-static .bg-gray-50,
+.theme-static .bg-gray-700,
+.theme-static .bg-gray-800,
+.theme-static .bg-blue-50 {
+  background-color: var(--theme-surface) !important;
+}
+
+.theme-static .border-gray-100,
+.theme-static .border-gray-200,
+.theme-static .border-gray-300,
+.theme-static .border-gray-700,
+.theme-static .border-purple-100,
+.theme-static .border-purple-200,
+.theme-static .border-indigo-100,
+.theme-static .border-blue-500 {
+  border-color: var(--theme-border) !important;
+}
+
+.theme-static .text-gray-900,
+.theme-static .text-gray-800,
+.theme-static .text-gray-700,
+.theme-static .text-gray-600,
+.theme-static .text-gray-500,
+.theme-static .text-blue-700,
+.theme-static .text-blue-500,
+.theme-static .text-green-400,
+.theme-static .text-emerald-300 {
+  color: var(--theme-text) !important;
+}
+
+.theme-static .text-gray-400,
+.theme-static .text-slate-500,
+.theme-static .text-slate-700,
+.theme-static .text-white\/80 {
+  color: var(--theme-muted) !important;
+}
+
+.theme-static input,
+.theme-static select,
+.theme-static textarea {
+  background-color: var(--theme-surface-strong) !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border) !important;
+}
+
+.theme-static input::placeholder,
+.theme-static textarea::placeholder {
+  color: var(--theme-muted) !important;
+}
+
+.theme-static input:focus,
+.theme-static select:focus,
+.theme-static textarea:focus {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.3) !important;
+  outline: none !important;
+}
+
+.theme-static .bg-gradient-to-br.from-indigo-50.to-purple-50,
+.theme-static .bg-gradient-to-br.from-purple-100.to-pink-100,
+.theme-static .bg-gradient-to-r.from-purple-50.to-pink-50,
+.theme-static .bg-gradient-to-r.from-indigo-600.via-purple-600.to-pink-600,
+.theme-static .bg-gradient-to-r.from-green-600.to-teal-600,
+.theme-static .bg-gradient-to-r.from-green-700.to-teal-700,
+.theme-static .bg-gradient-to-r.from-purple-600.to-pink-600,
+.theme-static .bg-gradient-to-br.from-green-500.to-teal-500 {
+  background-image: linear-gradient(135deg, #1e293b, #0f172a) !important;
+}
+
+.theme-static .bg-blue-500,
+.theme-static .bg-blue-600,
+.theme-static .bg-green-500,
+.theme-static .bg-green-600,
+.theme-static .bg-green-700,
+.theme-static .bg-purple-100,
+.theme-static .bg-green-100,
+.theme-static .bg-blue-100 {
+  background-color: #334155 !important;
+}
+
+.theme-static .hover\:bg-blue-600:hover,
+.theme-static .hover\:bg-green-600:hover,
+.theme-static .hover\:bg-green-700:hover,
+.theme-static .hover\:bg-white\/20:hover,
+.theme-static .hover\:bg-white\/75:hover,
+.theme-static .hover\:bg-white\/80:hover {
+  background-color: #475569 !important;
+}
+
+.theme-static .text-purple-700,
+.theme-static .text-purple-600,
+.theme-static .text-green-700,
+.theme-static .text-blue-700 {
+  color: #bfdbfe !important;
+}
+
+.theme-static .bg-white\/20,
+.theme-static .bg-white\/10,
+.theme-static .bg-white\/55,
+.theme-static .bg-white\/60,
+.theme-static .bg-white\/75,
+.theme-static .bg-white\/80 {
+  background-color: rgba(30, 41, 59, 0.8) !important;
 }
