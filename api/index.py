@@ -72,7 +72,8 @@ Keep responses short and to the point (2-3 sentences max unless asked for more d
 
 
 def get_openrouter_client() -> OpenAI | None:
-    api_key = get_env("OPENROUTER_API_KEY")
+    # Support both key names so Vercel env mismatches do not break chat.
+    api_key = get_env("OPENROUTER_API_KEY") or get_env("OPENAI_API_KEY")
     if not api_key:
         return None
 
@@ -505,7 +506,14 @@ def chat(payload: ChatRequest) -> dict[str, str]:
 
     client = get_openrouter_client()
     if client is None:
-        raise HTTPException(status_code=500, detail="Server is missing OPENROUTER_API_KEY.")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Server is missing OpenRouter API key. Set OPENROUTER_API_KEY "
+                "(or OPENAI_API_KEY) in Vercel for this deployment environment "
+                "(Preview/Production) and redeploy."
+            ),
+        )
 
     try:
         completion = client.chat.completions.create(
