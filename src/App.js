@@ -637,7 +637,7 @@ function App() {
       [formKey]: '',
     }));
     return true;
-  }, [captchaByForm, captchaInputByForm, refreshCaptcha]);
+  }, [captchaByForm, captchaInputByForm]);
 
   const parseApiError = async (response, fallbackMessage) => {
     const contentType = response.headers.get('content-type') || '';
@@ -734,35 +734,6 @@ function App() {
       setAuthError(error.message || 'Authentication failed.');
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    const token = authToken;
-    setAuthUser(null);
-    setAuthToken('');
-    setShowRequestForm(false);
-    setShowSehriRequestForm(false);
-    setShowFeedbackForm(false);
-    setShowAuthModal(false);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    }
-
-    if (!token) {
-      return;
-    }
-
-    try {
-      const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
-      await fetch(`${authBaseUrl}/logout`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (error) {
-      console.error('Logout request failed:', error);
     }
   };
 
