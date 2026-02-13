@@ -1214,11 +1214,12 @@ function App() {
   if (showEntryAnimation) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center px-4">
-        <div className="w-full max-w-xs sm:max-w-sm">
+        <div className="w-[82vw] sm:w-[64vw] lg:w-[46vw] max-w-[680px] min-w-[280px] aspect-square">
           <DotLottieReact
             src={ENTRY_LOTTIE_URL}
             loop
             autoplay
+            style={{ width: '100%', height: '100%' }}
           />
         </div>
       </div>
