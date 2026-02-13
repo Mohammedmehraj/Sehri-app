@@ -94,6 +94,7 @@ npm start
 	- `REACT_APP_CHATBOT_API_URL` (optional): `/api/chat` for same-project deployment
 	- `REACT_APP_PROVIDERS_API_URL` (optional): `/api/providers` for same-project deployment
 	- `REACT_APP_AUTH_API_URL` (optional): `/api/auth` for same-project deployment
+	- `REACT_APP_SEHRI_REQUESTS_API_URL` (optional): `/api/sehri-requests` for same-project deployment
 	- `REACT_APP_PROVIDERS_PAGE_SIZE` (optional): default `12`
 	- `OPENROUTER_API_KEY` (required for chatbot): OpenRouter API key
 	- `OPENROUTER_MODEL` (optional): defaults to `liquid/lfm-2.5-1.2b-instruct:free`
@@ -105,6 +106,7 @@ npm start
 	- `MONGODB_PROVIDERS_COLLECTION` (optional): defaults to `providers` (case-insensitive)
 	- `MONGODB_USERS_COLLECTION` (optional): defaults to `users`
 	- `MONGODB_SESSIONS_COLLECTION` (optional): defaults to `auth_sessions`
+	- `MONGODB_SEHRI_REQUESTS_COLLECTION` (optional): defaults to `sehri_requests`
 	- `AUTH_SECRET_KEY` (required for auth): random secret used to sign session token hashes
 	- `AUTH_SESSION_DAYS` (optional): defaults to `7`
 3. Deploy. This project serves frontend and Python API from `api/index.py` in one Vercel project.
@@ -117,6 +119,8 @@ npm start
 - `GET /api/providers` -> paginated providers from MongoDB
   - Query params: `page` (default `1`), `page_size` (default `12`), `location` (optional)
 - `GET /api/providers/all` -> all raw provider documents from MongoDB
+- `PATCH /api/auth/profile` -> update logged-in user basic profile fields
+- `POST /api/sehri-requests` -> creates a Sehri support request in MongoDB (guest and authenticated submissions supported)
 
 ## Technologies Used
 

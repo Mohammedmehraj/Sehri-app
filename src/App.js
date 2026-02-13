@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import PrayerCountdownRing from './components/PrayerCountdownRing';
 
 const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').trim();
 const PROVIDERS_API_URL = (process.env.REACT_APP_PROVIDERS_API_URL || '/api/providers').trim();
 const AUTH_API_BASE_URL = (process.env.REACT_APP_AUTH_API_URL || '/api/auth').trim();
+const SEHRI_REQUESTS_API_URL = (process.env.REACT_APP_SEHRI_REQUESTS_API_URL || '/api/sehri-requests').trim();
 const DONATION_URL = (process.env.REACT_APP_DONATION_URL || 'https://www.launchgood.com').trim();
 const PROVIDERS_PAGE_SIZE = Math.max(
   1,
   parseInt(process.env.REACT_APP_PROVIDERS_PAGE_SIZE || '12', 10) || 12
 );
 const AUTH_TOKEN_STORAGE_KEY = 'sehriFinder_authToken';
+const ENTRY_LOTTIE_URL = 'https://lottie.host/18c8584d-60fa-4004-a299-add753193be5/nkq6EpDrn2.lottie';
+const ENTRY_LOTTIE_DURATION_MS = 2200;
 
 const SKY_GRADIENT_BY_PERIOD = {
   fajr: 'bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900',
@@ -181,7 +185,19 @@ function App() {
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [activeSection, setActiveSection] = useState('home'); // 'home', 'about'
+  const [activeSection, setActiveSection] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'home';
+    }
+    const path = window.location.pathname.toLowerCase();
+    if (path.startsWith('/about')) {
+      return 'about';
+    }
+    if (path.startsWith('/profile')) {
+      return 'profile';
+    }
+    return 'home';
+  });
   const [showChatbot, setShowChatbot] = useState(false);
   const skyThemeClass = SKY_GRADIENT_BY_PERIOD.isha;
   const [authToken, setAuthToken] = useState(() => {
@@ -198,6 +214,16 @@ function App() {
     email: '',
     password: ''
   });
+  const [profileFormData, setProfileFormData] = useState({
+    name: '',
+    gender: '',
+    phone: '',
+    city: '',
+    address: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
   const [captchaByForm, setCaptchaByForm] = useState(() => createCaptchaChallengeMap());
   const [captchaInputByForm, setCaptchaInputByForm] = useState(() => createCaptchaTextMap());
   const [captchaErrorByForm, setCaptchaErrorByForm] = useState(() => createCaptchaTextMap());
@@ -229,18 +255,42 @@ function App() {
   });
   const [sehriRequestData, setSehriRequestData] = useState({
     fullName: '',
-    phoneNumber: '',
-    location: '',
-    peopleCount: '1',
-    neededBy: '',
-    notes: ''
+    gender: '',
+    mobileNumber: '',
+    email: '',
+    alternativeNumber: '',
+    address: '',
+    landmark: '',
+    pincode: '',
+    city: 'Bangalore',
+    sehriCount: '1',
+    locationType: ''
   });
+  const [sehriRequestSubmitting, setSehriRequestSubmitting] = useState(false);
   const [feedbackData, setFeedbackData] = useState({
     name: '',
     email: '',
     rating: '5',
     message: ''
   });
+  const [showEntryAnimation, setShowEntryAnimation] = useState(true);
+
+  const navigateToSection = useCallback((section) => {
+    setActiveSection(section);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let targetPath = '/';
+    if (section === 'about') {
+      targetPath = '/about';
+    } else if (section === 'profile') {
+      targetPath = '/profile';
+    }
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  }, []);
   
   const calculateNextPrayer = useCallback((timings) => {
     const now = new Date();
@@ -278,6 +328,14 @@ function App() {
       icon: '🌅',
       timeUntil: 'Tomorrow'
     });
+  }, []);
+
+  useEffect(() => {
+    const timerId = setTimeout(() => {
+      setShowEntryAnimation(false);
+    }, ENTRY_LOTTIE_DURATION_MS);
+
+    return () => clearTimeout(timerId);
   }, []);
   
   // Fetch prayer times for Bangalore
@@ -349,6 +407,25 @@ function App() {
     }
   }, []);
 
+  // Keep section in sync with browser navigation.
+  useEffect(() => {
+    const syncSectionWithPath = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path.startsWith('/about')) {
+        setActiveSection('about');
+        return;
+      }
+      if (path.startsWith('/profile')) {
+        setActiveSection('profile');
+        return;
+      }
+      setActiveSection('home');
+    };
+
+    window.addEventListener('popstate', syncSectionWithPath);
+    return () => window.removeEventListener('popstate', syncSectionWithPath);
+  }, []);
+
   // Restore authenticated user from token
   useEffect(() => {
     if (!authToken) {
@@ -396,6 +473,37 @@ function App() {
     fetchCurrentUser();
     return () => controller.abort();
   }, [authToken]);
+
+  useEffect(() => {
+    if (!authUser) {
+      setProfileFormData({
+        name: '',
+        gender: '',
+        phone: '',
+        city: '',
+        address: '',
+      });
+      return;
+    }
+
+    setProfileFormData({
+      name: authUser.name || '',
+      gender: authUser.gender || '',
+      phone: authUser.phone || '',
+      city: authUser.city || '',
+      address: authUser.address || '',
+    });
+  }, [authUser]);
+
+  useEffect(() => {
+    if (activeSection !== 'profile' || authUser) {
+      return;
+    }
+    setAuthError('Please login to access your profile.');
+    setIsRegisterMode(false);
+    setShowAuthModal(true);
+    navigateToSection('home');
+  }, [activeSection, authUser, navigateToSection]);
 
   // Load providers from backend API
   useEffect(() => {
@@ -737,6 +845,57 @@ function App() {
     }
   };
 
+  const handleProfileInputChange = (e) => {
+    const { name, value } = e.target;
+    setProfileFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+    setProfileError('');
+    setProfileMessage('');
+  };
+
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    if (!authToken) {
+      setAuthError('Please login to continue.');
+      setIsRegisterMode(false);
+      setShowAuthModal(true);
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileMessage('');
+
+    try {
+      const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
+      const response = await fetch(`${authBaseUrl}/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(profileFormData),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Failed to update profile.'));
+      }
+
+      const payload = await response.json();
+      if (payload?.user) {
+        setAuthUser(payload.user);
+      }
+      setProfileMessage(payload?.message || 'Profile updated successfully.');
+    } catch (error) {
+      console.error('Profile update failed:', error);
+      setProfileError(error.message || 'Failed to update profile.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const requireAuth = useCallback((action) => {
     if (authUser) {
       action();
@@ -746,6 +905,46 @@ function App() {
     setIsRegisterMode(false);
     setShowAuthModal(true);
   }, [authUser]);
+
+  const requireChatbotAuth = useCallback(() => {
+    if (authUser) {
+      return true;
+    }
+    setAuthError('Please login to use the chatbot.');
+    setIsRegisterMode(false);
+    setShowAuthModal(true);
+    return false;
+  }, [authUser]);
+
+  const handleLogout = useCallback(async () => {
+    const token = authToken;
+    setAuthUser(null);
+    setAuthToken('');
+    setShowAuthModal(false);
+    setShowChatbot(false);
+    setProfileMessage('');
+    setProfileError('');
+    navigateToSection('home');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    }
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      const authBaseUrl = AUTH_API_BASE_URL.replace(/\/+$/, '');
+      await fetch(`${authBaseUrl}/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    }
+  }, [authToken, navigateToSection]);
 
   // Handle form input changes
   const handleFormChange = (e) => {
@@ -794,25 +993,63 @@ function App() {
     }));
   };
 
-  const handleSehriRequestSubmit = (e) => {
+  const handleSehriRequestSubmit = async (e) => {
     e.preventDefault();
     if (!validateCaptcha('sehri')) {
       return;
     }
 
-    console.log('Sehri Support Request Submitted:', sehriRequestData);
-    alert(`Thanks ${sehriRequestData.fullName}! Your Sehri request has been received.`);
+    if (!SEHRI_REQUESTS_API_URL) {
+      alert('Sehri request API is not configured. Set REACT_APP_SEHRI_REQUESTS_API_URL.');
+      return;
+    }
 
-    setSehriRequestData({
-      fullName: '',
-      phoneNumber: '',
-      location: '',
-      peopleCount: '1',
-      neededBy: '',
-      notes: ''
-    });
-    refreshCaptcha('sehri');
-    setShowSehriRequestForm(false);
+    setSehriRequestSubmitting(true);
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch(SEHRI_REQUESTS_API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...sehriRequestData,
+          sehriCount: parseInt(sehriRequestData.sehriCount, 10) || 1,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Failed to submit Sehri request.'));
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      alert(payload.message || `Thanks ${sehriRequestData.fullName}! Your Sehri request has been received.`);
+
+      setSehriRequestData({
+        fullName: '',
+        gender: '',
+        mobileNumber: '',
+        email: '',
+        alternativeNumber: '',
+        address: '',
+        landmark: '',
+        pincode: '',
+        city: 'Bangalore',
+        sehriCount: '1',
+        locationType: ''
+      });
+      refreshCaptcha('sehri');
+      setShowSehriRequestForm(false);
+    } catch (error) {
+      console.error('Sehri request submission failed:', error);
+      alert(error.message || 'Could not submit Sehri request. Please try again.');
+    } finally {
+      setSehriRequestSubmitting(false);
+    }
   };
 
   const handleFeedbackChange = (e) => {
@@ -846,6 +1083,9 @@ function App() {
   const handleChatSubmit = (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
+    if (!requireChatbotAuth()) {
+      return;
+    }
 
     if (!CHATBOT_API_URL) {
       setChatMessages(prev => [
@@ -926,6 +1166,14 @@ function App() {
   const overlayButtonClass = isDarkUiTheme
     ? 'border-white/40 bg-white/10 text-white hover:bg-white/20'
     : 'border-white/80 bg-white/60 text-slate-900 hover:bg-white/80';
+  const authDisplayName = (authUser?.name || '').trim() || 'User';
+  const authInitials = authDisplayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
   const captchaBlockClass = 'bg-gray-50 border-gray-200';
   const captchaTextClass = 'text-gray-800';
 
@@ -943,7 +1191,7 @@ function App() {
           <button
             type="button"
             onClick={() => refreshCaptcha(formKey)}
-            className="text-xs font-semibold px-2.5 py-1 rounded-md transition-colors bg-gray-200 text-gray-800 hover:bg-gray-300"
+            className="text-xs font-semibold px-2.5 py-1 rounded-md transition-colors border border-sky-300 bg-sky-200 text-slate-900 hover:bg-sky-300"
           >
             Refresh
           </button>
@@ -963,12 +1211,26 @@ function App() {
     );
   };
 
+  if (showEntryAnimation) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <div className="w-full max-w-xs sm:max-w-sm">
+          <DotLottieReact
+            src={ENTRY_LOTTIE_URL}
+            loop
+            autoplay
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`theme-static min-h-screen transition-all duration-700 ${skyThemeClass}`}>
       {/* Header */}
       <header className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} transition-all duration-700 shadow-lg sticky top-0 z-30`}>
         <div className="container mx-auto px-4 py-4 md:py-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-1">
                 Bangalore Sehri Finder
@@ -977,7 +1239,39 @@ function App() {
                 Find Sehri at Masjids, Volunteers & Restaurants
               </p>
             </div>
-
+            {authUser ? (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  onClick={() => navigateToSection('profile')}
+                  className="flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-2.5 py-1.5 hover:bg-white/20 transition-colors"
+                >
+                  <div className="h-8 w-8 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-sm font-bold">
+                    {authInitials || 'U'}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold leading-tight">{authDisplayName}</p>
+                    <p className={`${headerSubTextClass} text-[11px] leading-tight`}>{authUser.email}</p>
+                  </div>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-2 text-xs sm:text-sm rounded-full font-semibold border border-white/35 bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setAuthError('');
+                  setIsRegisterMode(false);
+                  setShowAuthModal(true);
+                }}
+                className="self-start md:self-auto px-4 py-2 text-sm rounded-full font-semibold border border-white/35 bg-white/10 hover:bg-white/20 transition-colors"
+              >
+                Login / Register
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -987,7 +1281,7 @@ function App() {
         <div className="container mx-auto px-4 py-3">
           <nav className="flex gap-2 overflow-x-auto pb-1">
             <button
-              onClick={() => setActiveSection('home')}
+              onClick={() => navigateToSection('home')}
               className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'home'
                   ? navActiveButtonClass
@@ -996,6 +1290,37 @@ function App() {
             >
               Home
             </button>
+            <button
+              onClick={() => {
+                navigateToSection('home');
+                setShowSehriRequestForm(true);
+              }}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
+            >
+              Request Sehri
+            </button>
+            <button
+              onClick={() => navigateToSection('about')}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
+                activeSection === 'about'
+                  ? navActiveButtonClass
+                  : navInactiveButtonClass
+              }`}
+            >
+              About Us
+            </button>
+            {authUser && (
+              <button
+                onClick={() => navigateToSection('profile')}
+                className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
+                  activeSection === 'profile'
+                    ? navActiveButtonClass
+                    : navInactiveButtonClass
+                }`}
+              >
+                My Profile
+              </button>
+            )}
           </nav>
         </div>
       </section>
@@ -1429,7 +1754,7 @@ function App() {
                   </p>
                   <button
                     onClick={() => {
-                      setActiveSection('home');
+                      navigateToSection('home');
                       requireAuth(() => setShowRequestForm(true));
                     }}
                     className={`${primaryTimingButtonClass} px-6 py-3 rounded-lg font-semibold transition-all shadow-lg`}
@@ -1460,12 +1785,145 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Profile Section */}
+        {activeSection === 'profile' && authUser && (
+          <div className="max-w-3xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8">
+              <div className="mb-6">
+                <h2 className={`text-2xl sm:text-3xl font-bold mb-2 ${overlayStrongTextClass}`}>
+                  My Profile
+                </h2>
+                <p className={overlayMutedTextClass}>
+                  Update your basic information.
+                </p>
+              </div>
+
+              <form onSubmit={handleProfileSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="profileName" className="block text-gray-700 font-semibold mb-2">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="profileName"
+                      name="name"
+                      value={profileFormData.name}
+                      onChange={handleProfileInputChange}
+                      required
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="profileEmail" className="block text-gray-700 font-semibold mb-2">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      id="profileEmail"
+                      value={authUser.email || ''}
+                      readOnly
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg bg-gray-100 opacity-80"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="profileGender" className="block text-gray-700 font-semibold mb-2">
+                      Gender
+                    </label>
+                    <select
+                      id="profileGender"
+                      name="gender"
+                      value={profileFormData.gender}
+                      onChange={handleProfileInputChange}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    >
+                      <option value="">Prefer not to say</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="profilePhone" className="block text-gray-700 font-semibold mb-2">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      id="profilePhone"
+                      name="phone"
+                      value={profileFormData.phone}
+                      onChange={handleProfileInputChange}
+                      placeholder="+91 XXXXX XXXXX"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="profileCity" className="block text-gray-700 font-semibold mb-2">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      id="profileCity"
+                      name="city"
+                      value={profileFormData.city}
+                      onChange={handleProfileInputChange}
+                      placeholder="Bangalore"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="profileAddress" className="block text-gray-700 font-semibold mb-2">
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      id="profileAddress"
+                      name="address"
+                      value={profileFormData.address}
+                      onChange={handleProfileInputChange}
+                      placeholder="House No, Street, Area"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {profileError && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {profileError}
+                  </p>
+                )}
+                {profileMessage && (
+                  <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    {profileMessage}
+                  </p>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={profileSaving}
+                    className={`px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
+                  >
+                    {profileSaving ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
           </main>
 
       {/* Floating Action Button */}
       {activeSection === 'home' && (
         <button
-          onClick={() => requireAuth(() => setShowSehriRequestForm(true))}
+          onClick={() => setShowSehriRequestForm(true)}
           className={`fixed bottom-4 right-4 sm:bottom-8 sm:right-8 ${primaryTimingButtonClass} p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40 flex items-center gap-2 group`}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1479,7 +1937,12 @@ function App() {
 
       {/* Chatbot Floating Button */}
       <button
-        onClick={() => setShowChatbot(!showChatbot)}
+        onClick={() => {
+          if (!showChatbot && !requireChatbotAuth()) {
+            return;
+          }
+          setShowChatbot(!showChatbot);
+        }}
         className="fixed bottom-4 left-4 sm:bottom-8 sm:left-8 bg-gradient-to-r from-green-600 to-teal-600 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 z-40"
         title="Chat with us"
       >
@@ -1578,7 +2041,7 @@ function App() {
                     {isRegisterMode ? 'Create Account' : 'Login'}
                   </h2>
                   <p className={`${headerSubTextClass} text-sm`}>
-                    {isRegisterMode ? 'Register to submit Sehri requests and feedback.' : 'Login to continue.'}
+                    {isRegisterMode ? 'Register to use chatbot and manage your activity.' : 'Login to use the chatbot.'}
                   </p>
                 </div>
                 <button
@@ -1936,88 +2399,181 @@ function App() {
                     value={sehriRequestData.fullName}
                     onChange={handleSehriRequestChange}
                     required
-                    placeholder="Your full name"
+                    placeholder="Enter your name"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
                 <div>
-                  <label htmlFor="sehriPhone" className="block text-gray-700 font-semibold mb-2">
-                    Phone Number <span className="text-red-500">*</span>
+                  <label htmlFor="sehriGender" className="block text-gray-700 font-semibold mb-2">
+                    Gender <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="sehriGender"
+                    name="gender"
+                    value={sehriRequestData.gender}
+                    onChange={handleSehriRequestChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  >
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="sehriMobileNumber" className="block text-gray-700 font-semibold mb-2">
+                    Mobile Number <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="tel"
-                    id="sehriPhone"
-                    name="phoneNumber"
-                    value={sehriRequestData.phoneNumber}
+                    id="sehriMobileNumber"
+                    name="mobileNumber"
+                    value={sehriRequestData.mobileNumber}
                     onChange={handleSehriRequestChange}
                     required
-                    placeholder="+91 98XXXXXXXX"
+                    placeholder="+91 XXXXX XXXXX"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sehriEmail" className="block text-gray-700 font-semibold mb-2">
+                    Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    id="sehriEmail"
+                    name="email"
+                    value={sehriRequestData.email}
+                    onChange={handleSehriRequestChange}
+                    placeholder="your@email.com"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-1">
-                  <label htmlFor="sehriPeopleCount" className="block text-gray-700 font-semibold mb-2">
-                    People Count <span className="text-red-500">*</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="sehriAlternativeNumber" className="block text-gray-700 font-semibold mb-2">
+                    Alternative Number (Optional)
                   </label>
                   <input
-                    type="number"
-                    id="sehriPeopleCount"
-                    name="peopleCount"
-                    min="1"
-                    value={sehriRequestData.peopleCount}
+                    type="tel"
+                    id="sehriAlternativeNumber"
+                    name="alternativeNumber"
+                    value={sehriRequestData.alternativeNumber}
                     onChange={handleSehriRequestChange}
-                    required
+                    placeholder="+91 XXXXX XXXXX"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label htmlFor="sehriNeededBy" className="block text-gray-700 font-semibold mb-2">
-                    Needed By <span className="text-red-500">*</span>
+                <div>
+                  <label htmlFor="sehriPincode" className="block text-gray-700 font-semibold mb-2">
+                    Pincode <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="time"
-                    id="sehriNeededBy"
-                    name="neededBy"
-                    value={sehriRequestData.neededBy}
+                    type="text"
+                    inputMode="numeric"
+                    id="sehriPincode"
+                    name="pincode"
+                    value={sehriRequestData.pincode}
                     onChange={handleSehriRequestChange}
                     required
+                    placeholder="560001"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="sehriLocation" className="block text-gray-700 font-semibold mb-2">
-                  Location <span className="text-red-500">*</span>
+                <label htmlFor="sehriAddress" className="block text-gray-700 font-semibold mb-2">
+                  Address <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
-                  id="sehriLocation"
-                  name="location"
-                  value={sehriRequestData.location}
+                  id="sehriAddress"
+                  name="address"
+                  value={sehriRequestData.address}
                   onChange={handleSehriRequestChange}
                   required
-                  placeholder="Area and landmark"
+                  placeholder="House No, Street, Building..."
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                 />
               </div>
 
-              <div>
-                <label htmlFor="sehriNotes" className="block text-gray-700 font-semibold mb-2">
-                  Notes
-                </label>
-                <textarea
-                  id="sehriNotes"
-                  name="notes"
-                  rows="4"
-                  value={sehriRequestData.notes}
-                  onChange={handleSehriRequestChange}
-                  placeholder="Any dietary needs or special notes"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
-                ></textarea>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="sehriLandmark" className="block text-gray-700 font-semibold mb-2">
+                    Landmark <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="sehriLandmark"
+                    name="landmark"
+                    value={sehriRequestData.landmark}
+                    onChange={handleSehriRequestChange}
+                    required
+                    placeholder="Near Metro Station, Opposite..."
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sehriCity" className="block text-gray-700 font-semibold mb-2">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    id="sehriCity"
+                    name="city"
+                    value={sehriRequestData.city}
+                    onChange={handleSehriRequestChange}
+                    placeholder="Bangalore"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="sehriCount" className="block text-gray-700 font-semibold mb-2">
+                    No. of Sehris Required <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="sehriCount"
+                    name="sehriCount"
+                    min="1"
+                    value={sehriRequestData.sehriCount}
+                    onChange={handleSehriRequestChange}
+                    required
+                    placeholder="1"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sehriLocationType" className="block text-gray-700 font-semibold mb-2">
+                    Location Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="sehriLocationType"
+                    name="locationType"
+                    value={sehriRequestData.locationType}
+                    onChange={handleSehriRequestChange}
+                    required
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                  >
+                    <option value="">Select</option>
+                    <option value="Home">Home</option>
+                    <option value="PG/Hostel">PG/Hostel</option>
+                    <option value="Street/Outdoor">Street/Outdoor</option>
+                    <option value="Masjid Area">Masjid Area</option>
+                    <option value="Workplace">Workplace</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
 
               {renderCaptchaField('sehri')}
@@ -2032,9 +2588,10 @@ function App() {
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl`}
+                  disabled={sehriRequestSubmitting}
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
-                  Submit Sehri Request
+                  {sehriRequestSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
             </form>

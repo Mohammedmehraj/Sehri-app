@@ -44,6 +44,28 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ProfileUpdateRequest(BaseModel):
+    name: str
+    gender: str = ""
+    phone: str = ""
+    city: str = ""
+    address: str = ""
+
+
+class SehriRequestCreate(BaseModel):
+    fullName: str
+    gender: str
+    mobileNumber: str
+    email: str = ""
+    alternativeNumber: str = ""
+    address: str
+    landmark: str
+    pincode: str
+    city: str = "Bangalore"
+    sehriCount: int
+    locationType: str
+
+
 def get_env(name: str, default: str | None = None) -> str | None:
     value = os.getenv(name, default)
     if value is None:
@@ -166,6 +188,20 @@ def get_sessions_collection() -> Collection:
     collection = client[db_name][collection_name]
     collection.create_index("token_hash", unique=True)
     collection.create_index("expires_at")
+    return collection
+
+
+def get_sehri_requests_collection() -> Collection:
+    client = get_mongo_client()
+    db_name = get_env("MONGODB_DB_NAME") or get_auth_db_name()
+    collection_name = get_env("MONGODB_SEHRI_REQUESTS_COLLECTION", "sehri_requests")
+    if not collection_name:
+        raise RuntimeError("MONGODB_SEHRI_REQUESTS_COLLECTION is invalid.")
+
+    collection = client[db_name][collection_name]
+    collection.create_index("created_at")
+    collection.create_index("status")
+    collection.create_index("requested_by_user_id")
     return collection
 
 
@@ -344,6 +380,10 @@ def extract_user_payload(document: dict[str, Any]) -> dict[str, str]:
         "id": str(document.get("_id", "")),
         "name": str(document.get("name", "")).strip(),
         "email": str(document.get("email", "")).strip().lower(),
+        "gender": str(document.get("gender", "")).strip(),
+        "phone": str(document.get("phone", "")).strip(),
+        "city": str(document.get("city", "")).strip(),
+        "address": str(document.get("address", "")).strip(),
     }
 
 
@@ -555,6 +595,10 @@ def register(payload: RegisterRequest) -> dict[str, Any]:
         "name": name,
         "email": email,
         "password_hash": hash_password(password),
+        "gender": "",
+        "phone": "",
+        "city": "",
+        "address": "",
         "created_at": now,
         "updated_at": now,
         "is_active": True,
@@ -632,6 +676,57 @@ def me(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     return {"user": extract_user_payload(user_doc)}
 
 
+@app.patch("/auth/profile")
+@app.patch("/api/auth/profile")
+def update_profile(payload: ProfileUpdateRequest, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    token = get_token_from_authorization_header(authorization)
+    user_doc = get_current_user_from_token(token)
+
+    name = payload.name.strip()
+    gender = payload.gender.strip()
+    phone = payload.phone.strip()
+    city = payload.city.strip()
+    address = payload.address.strip()
+
+    if len(name) < 2:
+        raise HTTPException(status_code=422, detail="Name must be at least 2 characters.")
+    if gender and gender not in {"Male", "Female", "Other"}:
+        raise HTTPException(status_code=422, detail="Gender is invalid.")
+
+    normalized_phone_digits = re.sub(r"\D", "", phone)
+    if phone and len(normalized_phone_digits) < 10:
+        raise HTTPException(status_code=422, detail="Phone number is invalid.")
+    if len(city) > 120:
+        raise HTTPException(status_code=422, detail="City is too long.")
+    if len(address) > 300:
+        raise HTTPException(status_code=422, detail="Address is too long.")
+
+    users_collection = get_users_collection()
+    now = utc_now()
+    users_collection.update_one(
+        {"_id": user_doc.get("_id")},
+        {
+            "$set": {
+                "name": name,
+                "gender": gender,
+                "phone": phone,
+                "city": city,
+                "address": address,
+                "updated_at": now,
+            }
+        },
+    )
+
+    updated_user_doc = users_collection.find_one({"_id": user_doc.get("_id")})
+    if not updated_user_doc:
+        raise HTTPException(status_code=500, detail="Could not load updated profile.")
+
+    return {
+        "message": "Profile updated successfully.",
+        "user": extract_user_payload(updated_user_doc),
+    }
+
+
 @app.post("/auth/logout")
 @app.post("/api/auth/logout")
 def logout(authorization: str | None = Header(default=None)) -> dict[str, str]:
@@ -639,6 +734,98 @@ def logout(authorization: str | None = Header(default=None)) -> dict[str, str]:
     sessions_collection = get_sessions_collection()
     sessions_collection.delete_one({"token_hash": hash_auth_token(token)})
     return {"message": "Logged out."}
+
+
+@app.post("/sehri-requests")
+@app.post("/api/sehri-requests")
+def create_sehri_request(payload: SehriRequestCreate, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    requested_by_user_id = ""
+    requested_by_email = ""
+    requested_by_name = ""
+    submission_source = "guest"
+
+    if authorization:
+        try:
+            token = get_token_from_authorization_header(authorization)
+            user_doc = get_current_user_from_token(token)
+            requested_by_user_id = str(user_doc.get("_id", ""))
+            requested_by_email = str(user_doc.get("email", "")).strip().lower()
+            requested_by_name = str(user_doc.get("name", "")).strip()
+            submission_source = "authenticated"
+        except HTTPException:
+            # Accept guest submission even if auth header is stale/invalid.
+            pass
+
+    full_name = payload.fullName.strip()
+    gender = payload.gender.strip()
+    mobile_number = payload.mobileNumber.strip()
+    email = payload.email.strip().lower()
+    alternative_number = payload.alternativeNumber.strip()
+    address = payload.address.strip()
+    landmark = payload.landmark.strip()
+    pincode = payload.pincode.strip()
+    city = payload.city.strip()
+    location_type = payload.locationType.strip()
+
+    normalized_mobile_digits = re.sub(r"\D", "", mobile_number)
+    normalized_alt_digits = re.sub(r"\D", "", alternative_number)
+
+    if len(full_name) < 2:
+        raise HTTPException(status_code=422, detail="Full name must be at least 2 characters.")
+    if gender not in {"Male", "Female", "Other"}:
+        raise HTTPException(status_code=422, detail="Gender is required.")
+    if len(normalized_mobile_digits) < 10:
+        raise HTTPException(status_code=422, detail="Mobile number is invalid.")
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Email format is invalid.")
+    if alternative_number and len(normalized_alt_digits) < 10:
+        raise HTTPException(status_code=422, detail="Alternative number is invalid.")
+    if len(address) < 3:
+        raise HTTPException(status_code=422, detail="Address is required.")
+    if len(landmark) < 2:
+        raise HTTPException(status_code=422, detail="Landmark is required.")
+    if not re.match(r"^\d{6}$", pincode):
+        raise HTTPException(status_code=422, detail="Pincode must be 6 digits.")
+    if len(city) < 2:
+        raise HTTPException(status_code=422, detail="City is required.")
+    if payload.sehriCount < 1:
+        raise HTTPException(status_code=422, detail="No. of Sehris Required must be at least 1.")
+    if location_type not in {"Home", "PG/Hostel", "Street/Outdoor", "Masjid Area", "Workplace", "Other"}:
+        raise HTTPException(status_code=422, detail="Location Type is required.")
+
+    now = utc_now()
+    document = {
+        "full_name": full_name,
+        "gender": gender,
+        "mobile_number": mobile_number,
+        "email": email,
+        "alternative_number": alternative_number,
+        "address": address,
+        "landmark": landmark,
+        "pincode": pincode,
+        "city": city,
+        "sehri_count": payload.sehriCount,
+        "location_type": location_type,
+        "submission_source": submission_source,
+        "status": "pending",
+        "requested_by_user_id": requested_by_user_id,
+        "requested_by_email": requested_by_email,
+        "requested_by_name": requested_by_name,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    try:
+        inserted = get_sehri_requests_collection().insert_one(document)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    return {
+        "message": "Sehri request submitted successfully.",
+        "request_id": str(inserted.inserted_id),
+    }
 
 
 @app.get("/health")
