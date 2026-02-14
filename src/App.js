@@ -14,7 +14,7 @@ const PROVIDERS_PAGE_SIZE = Math.max(
 );
 const AUTH_TOKEN_STORAGE_KEY = 'sehriFinder_authToken';
 const ENTRY_LOTTIE_URL = 'https://lottie.host/18c8584d-60fa-4004-a299-add753193be5/nkq6EpDrn2.lottie';
-const ENTRY_LOTTIE_DURATION_MS = 2200;
+const ENTRY_LOTTIE_DURATION_MS = 5000;
 const BANGALORE_RAMADAN_CALENDAR = [
   { date: '19 Feb 2026 (1 Ramadan)', sehri: '05:29 AM', iftar: '06:26 PM' },
   { date: '20 Feb 2026', sehri: '05:29 AM', iftar: '06:27 PM' },
