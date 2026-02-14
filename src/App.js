@@ -203,6 +203,56 @@ function parseCalendarInfoFromApi(datePayload) {
   };
 }
 
+function getRamadanDayFromLabel(label, fallbackDay) {
+  const match = String(label || '').match(/\((\d+)\s*Ramadan\)/i);
+  if (!match) {
+    return fallbackDay;
+  }
+  const parsed = parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackDay;
+}
+
+function parseTwelveHourTimeToMinutes(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) {
+    return null;
+  }
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = match[3].toUpperCase();
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  if (hours < 1 || hours > 12) {
+    return null;
+  }
+
+  if (hours === 12) {
+    hours = 0;
+  }
+  if (meridiem === 'PM') {
+    hours += 12;
+  }
+
+  return (hours * 60) + minutes;
+}
+
+function formatTimeShift(previousValue, currentValue) {
+  const previousMinutes = parseTwelveHourTimeToMinutes(previousValue);
+  const currentMinutes = parseTwelveHourTimeToMinutes(currentValue);
+  if (previousMinutes === null || currentMinutes === null) {
+    return 'N/A';
+  }
+  const delta = currentMinutes - previousMinutes;
+  if (delta === 0) {
+    return 'No change';
+  }
+  return `${delta > 0 ? '+' : '-'}${Math.abs(delta)} min`;
+}
+
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
   {
@@ -317,6 +367,8 @@ function App() {
   const [showSehriRequestForm, setShowSehriRequestForm] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [showRamadanCalendarModal, setShowRamadanCalendarModal] = useState(false);
+  const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
+  const [selectedRamadanDay, setSelectedRamadanDay] = useState(1);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeSection, setActiveSection] = useState(() => {
@@ -421,6 +473,45 @@ function App() {
   });
   const [showEntryAnimation, setShowEntryAnimation] = useState(true);
 
+  const ramadanCalendarRows = useMemo(() => (
+    BANGALORE_RAMADAN_CALENDAR.map((row, index) => ({
+      ...row,
+      ramadanDay: getRamadanDayFromLabel(row.date, index + 1),
+    }))
+  ), []);
+
+  const filteredRamadanCalendarRows = useMemo(() => {
+    const query = calendarSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return ramadanCalendarRows;
+    }
+    return ramadanCalendarRows.filter((row) => (
+      row.date.toLowerCase().includes(query)
+      || row.sehri.toLowerCase().includes(query)
+      || row.iftar.toLowerCase().includes(query)
+      || String(row.ramadanDay).includes(query)
+      || `day ${row.ramadanDay}`.includes(query)
+    ));
+  }, [calendarSearchQuery, ramadanCalendarRows]);
+
+  const selectedRamadanRow = useMemo(() => (
+    ramadanCalendarRows.find((row) => row.ramadanDay === selectedRamadanDay) || null
+  ), [ramadanCalendarRows, selectedRamadanDay]);
+
+  const selectedRamadanSummary = useMemo(() => {
+    if (!selectedRamadanRow) {
+      return null;
+    }
+    const previousDayRow = ramadanCalendarRows.find(
+      (row) => row.ramadanDay === (selectedRamadanRow.ramadanDay - 1)
+    );
+    return {
+      ...selectedRamadanRow,
+      sehriShift: previousDayRow ? formatTimeShift(previousDayRow.sehri, selectedRamadanRow.sehri) : 'Start of Ramadan',
+      iftarShift: previousDayRow ? formatTimeShift(previousDayRow.iftar, selectedRamadanRow.iftar) : 'Start of Ramadan',
+    };
+  }, [ramadanCalendarRows, selectedRamadanRow]);
+
   const navigateToSection = useCallback((section) => {
     setActiveSection(section);
     if (typeof window === 'undefined') {
@@ -486,6 +577,24 @@ function App() {
     }, ENTRY_LOTTIE_DURATION_MS);
 
     return () => clearTimeout(timerId);
+  }, []);
+
+  useEffect(() => {
+    if (filteredRamadanCalendarRows.length === 0) {
+      return;
+    }
+    const selectedDayExists = filteredRamadanCalendarRows.some(
+      (row) => row.ramadanDay === selectedRamadanDay
+    );
+    if (!selectedDayExists) {
+      setSelectedRamadanDay(filteredRamadanCalendarRows[0].ramadanDay);
+    }
+  }, [filteredRamadanCalendarRows, selectedRamadanDay]);
+
+  const openRamadanCalendarModal = useCallback(() => {
+    setCalendarSearchQuery('');
+    setSelectedRamadanDay(1);
+    setShowRamadanCalendarModal(true);
   }, []);
   
   // Fetch prayer times for Bangalore
@@ -1489,6 +1598,18 @@ function App() {
   const calendarRowOddClass = isDarkUiTheme ? 'bg-white/10' : 'bg-gray-50';
   const calendarTableStrongTextClass = isDarkUiTheme ? 'text-white' : 'text-gray-800';
   const calendarTableMutedTextClass = isDarkUiTheme ? 'text-white/85' : 'text-gray-700';
+  const calendarControlInputClass = isDarkUiTheme
+    ? 'w-full px-3 py-2 rounded-lg border border-white/20 bg-slate-900 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/30'
+    : 'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-200';
+  const calendarControlChipClass = isDarkUiTheme
+    ? 'px-3 py-1.5 rounded-full text-xs font-semibold border border-white/25 bg-white/10 text-white hover:bg-white/20 transition-colors'
+    : 'px-3 py-1.5 rounded-full text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors';
+  const calendarSelectedCardClass = isDarkUiTheme
+    ? 'rounded-lg border border-white/15 bg-white/5 p-3 sm:p-4 mb-4'
+    : 'rounded-lg border border-indigo-100 bg-indigo-50 p-3 sm:p-4 mb-4';
+  const calendarSelectedBadgeClass = isDarkUiTheme
+    ? 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-200'
+    : 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700';
   const isAdminUser = Boolean(authUser?.isAdmin);
   const authDisplayName = (authUser?.name || '').trim() || 'User';
   const authInitials = authDisplayName
@@ -1771,10 +1892,10 @@ function App() {
                   )}
                   <button
                     type="button"
-                    onClick={() => setShowRamadanCalendarModal(true)}
+                    onClick={openRamadanCalendarModal}
                     className={`mt-3 text-sm font-semibold ${calendarActionClass}`}
                   >
-                    View Bangalore Ramadan Sehri/Iftar Calendar
+                    Open Bangalore Ramadan Time Explorer
                   </button>
                 </div>
               </div>
@@ -3179,31 +3300,151 @@ function App() {
                 These timings are approximate for Bangalore. Please confirm locally with your nearby mosque.
               </p>
 
-              <div className={`rounded-lg border overflow-hidden ${calendarTableBorderClass}`}>
-                <table className="w-full table-fixed text-xs sm:text-sm">
-                  <colgroup>
-                    <col className="w-1/2" />
-                    <col className="w-1/4" />
-                    <col className="w-1/4" />
-                  </colgroup>
-                  <thead className={calendarTableHeadClass}>
-                    <tr>
-                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Date</th>
-                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Sehri</th>
-                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Iftar</th>
-                    </tr>
-                  </thead>
-                  <tbody className={`divide-y ${calendarTableBodyDividerClass}`}>
-                    {BANGALORE_RAMADAN_CALENDAR.map((row, index) => (
-                      <tr key={row.date} className={index % 2 === 0 ? calendarRowEvenClass : calendarRowOddClass}>
-                        <td className={`px-2 sm:px-4 py-2.5 font-semibold break-words leading-snug ${calendarTableStrongTextClass}`}>{row.date}</td>
-                        <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.sehri}</td>
-                        <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.iftar}</td>
-                      </tr>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div className="sm:col-span-2">
+                  <label htmlFor="ramadanCalendarSearch" className={`block text-xs font-semibold mb-1.5 ${calendarLabelClass}`}>
+                    Search by date, day, or time
+                  </label>
+                  <input
+                    id="ramadanCalendarSearch"
+                    type="text"
+                    value={calendarSearchQuery}
+                    onChange={(e) => setCalendarSearchQuery(e.target.value)}
+                    placeholder="Try: day 21, 01 Mar, 05:20 AM"
+                    className={calendarControlInputClass}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ramadanCalendarDaySelect" className={`block text-xs font-semibold mb-1.5 ${calendarLabelClass}`}>
+                    Jump to Ramadan day
+                  </label>
+                  <select
+                    id="ramadanCalendarDaySelect"
+                    value={selectedRamadanDay}
+                    onChange={(e) => setSelectedRamadanDay(parseInt(e.target.value, 10) || 1)}
+                    className={calendarControlInputClass}
+                  >
+                    {ramadanCalendarRows.map((row) => (
+                      <option key={`ramadan-day-${row.ramadanDay}`} value={row.ramadanDay}>
+                        Day {row.ramadanDay}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                  </select>
+                </div>
               </div>
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setCalendarSearchQuery('')}
+                  className={calendarControlChipClass}
+                >
+                  Clear Filter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalendarSearchQuery('');
+                    setSelectedRamadanDay(21);
+                  }}
+                  className={calendarControlChipClass}
+                >
+                  Jump to Last 10 Nights
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalendarSearchQuery('');
+                    setSelectedRamadanDay(27);
+                  }}
+                  className={calendarControlChipClass}
+                >
+                  Jump to Day 27
+                </button>
+              </div>
+
+              {selectedRamadanSummary && (
+                <div className={calendarSelectedCardClass}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className={`text-sm font-semibold ${calendarTableStrongTextClass}`}>
+                      Selected: {selectedRamadanSummary.date}
+                    </p>
+                    <span className={calendarSelectedBadgeClass}>Day {selectedRamadanSummary.ramadanDay}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs sm:text-sm">
+                    <div>
+                      <p className={calendarModalNoteClass}>Sehri</p>
+                      <p className={`font-semibold ${calendarTableStrongTextClass}`}>{selectedRamadanSummary.sehri}</p>
+                    </div>
+                    <div>
+                      <p className={calendarModalNoteClass}>Iftar</p>
+                      <p className={`font-semibold ${calendarTableStrongTextClass}`}>{selectedRamadanSummary.iftar}</p>
+                    </div>
+                    <div>
+                      <p className={calendarModalNoteClass}>Sehri Shift</p>
+                      <p className={`font-semibold ${calendarTableStrongTextClass}`}>{selectedRamadanSummary.sehriShift}</p>
+                    </div>
+                    <div>
+                      <p className={calendarModalNoteClass}>Iftar Shift</p>
+                      <p className={`font-semibold ${calendarTableStrongTextClass}`}>{selectedRamadanSummary.iftarShift}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {filteredRamadanCalendarRows.length === 0 ? (
+                <div className={`rounded-lg border p-4 text-sm ${calendarTableBorderClass} ${calendarModalNoteClass}`}>
+                  No matching calendar day found. Try a different search.
+                </div>
+              ) : (
+                <div className={`rounded-lg border overflow-hidden ${calendarTableBorderClass}`}>
+                  <table className="w-full table-fixed text-xs sm:text-sm">
+                    <colgroup>
+                      <col className="w-1/2" />
+                      <col className="w-1/4" />
+                      <col className="w-1/4" />
+                    </colgroup>
+                    <thead className={calendarTableHeadClass}>
+                      <tr>
+                        <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Date</th>
+                        <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Sehri</th>
+                        <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Iftar</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${calendarTableBodyDividerClass}`}>
+                      {filteredRamadanCalendarRows.map((row, index) => {
+                        const isSelectedRow = row.ramadanDay === selectedRamadanDay;
+                        const rowHoverClass = isDarkUiTheme ? 'hover:bg-white/15' : 'hover:bg-indigo-50';
+                        const rowSelectedClass = isDarkUiTheme ? 'bg-emerald-500/20' : 'bg-emerald-50';
+                        return (
+                          <tr
+                            key={row.date}
+                            className={`${isSelectedRow ? rowSelectedClass : (index % 2 === 0 ? calendarRowEvenClass : calendarRowOddClass)} ${rowHoverClass} cursor-pointer transition-colors`}
+                            onClick={() => setSelectedRamadanDay(row.ramadanDay)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedRamadanDay(row.ramadanDay);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <td className={`px-2 sm:px-4 py-2.5 font-semibold break-words leading-snug ${calendarTableStrongTextClass}`}>
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                <span>{row.date}</span>
+                                <span className={calendarSelectedBadgeClass}>Day {row.ramadanDay}</span>
+                              </div>
+                            </td>
+                            <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.sehri}</td>
+                            <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.iftar}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
