@@ -4,9 +4,10 @@ import PrayerCountdownRing from './components/PrayerCountdownRing';
 
 const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').trim();
 const PROVIDERS_API_URL = (process.env.REACT_APP_PROVIDERS_API_URL || '/api/providers').trim();
+const PROVIDER_SUBMISSIONS_API_URL = (process.env.REACT_APP_PROVIDER_SUBMISSIONS_API_URL || '/api/providers/submissions').trim();
+const ADMIN_PROVIDER_SUBMISSIONS_API_URL = (process.env.REACT_APP_ADMIN_PROVIDER_SUBMISSIONS_API_URL || '/api/admin/provider-submissions').trim();
 const AUTH_API_BASE_URL = (process.env.REACT_APP_AUTH_API_URL || '/api/auth').trim();
 const SEHRI_REQUESTS_API_URL = (process.env.REACT_APP_SEHRI_REQUESTS_API_URL || '/api/sehri-requests').trim();
-const DONATION_URL = (process.env.REACT_APP_DONATION_URL || 'https://www.launchgood.com').trim();
 const PROVIDERS_PAGE_SIZE = Math.max(
   1,
   parseInt(process.env.REACT_APP_PROVIDERS_PAGE_SIZE || '12', 10) || 12
@@ -14,6 +15,76 @@ const PROVIDERS_PAGE_SIZE = Math.max(
 const AUTH_TOKEN_STORAGE_KEY = 'sehriFinder_authToken';
 const ENTRY_LOTTIE_URL = 'https://lottie.host/18c8584d-60fa-4004-a299-add753193be5/nkq6EpDrn2.lottie';
 const ENTRY_LOTTIE_DURATION_MS = 2200;
+const BANGALORE_RAMADAN_CALENDAR = [
+  { date: '19 Feb 2026 (1 Ramadan)', sehri: '05:29 AM', iftar: '06:26 PM' },
+  { date: '20 Feb 2026', sehri: '05:29 AM', iftar: '06:27 PM' },
+  { date: '21 Feb 2026', sehri: '05:28 AM', iftar: '06:27 PM' },
+  { date: '22 Feb 2026', sehri: '05:28 AM', iftar: '06:27 PM' },
+  { date: '23 Feb 2026', sehri: '05:28 AM', iftar: '06:27 PM' },
+  { date: '24 Feb 2026', sehri: '05:27 AM', iftar: '06:27 PM' },
+  { date: '25 Feb 2026', sehri: '05:27 AM', iftar: '06:28 PM' },
+  { date: '26 Feb 2026', sehri: '05:26 AM', iftar: '06:28 PM' },
+  { date: '27 Feb 2026', sehri: '05:26 AM', iftar: '06:28 PM' },
+  { date: '28 Feb 2026', sehri: '05:25 AM', iftar: '06:28 PM' },
+  { date: '01 Mar 2026', sehri: '05:25 AM', iftar: '06:28 PM' },
+  { date: '02 Mar 2026', sehri: '05:24 AM', iftar: '06:28 PM' },
+  { date: '03 Mar 2026', sehri: '05:24 AM', iftar: '06:29 PM' },
+  { date: '04 Mar 2026', sehri: '05:23 AM', iftar: '06:29 PM' },
+  { date: '05 Mar 2026', sehri: '05:23 AM', iftar: '06:29 PM' },
+  { date: '06 Mar 2026', sehri: '05:22 AM', iftar: '06:29 PM' },
+  { date: '07 Mar 2026', sehri: '05:22 AM', iftar: '06:29 PM' },
+  { date: '08 Mar 2026', sehri: '05:21 AM', iftar: '06:29 PM' },
+  { date: '09 Mar 2026', sehri: '05:21 AM', iftar: '06:29 PM' },
+  { date: '10 Mar 2026', sehri: '05:20 AM', iftar: '06:29 PM' },
+  { date: '11 Mar 2026', sehri: '05:19 AM', iftar: '06:30 PM' },
+  { date: '12 Mar 2026', sehri: '05:19 AM', iftar: '06:30 PM' },
+  { date: '13 Mar 2026', sehri: '05:18 AM', iftar: '06:30 PM' },
+  { date: '14 Mar 2026', sehri: '05:17 AM', iftar: '06:30 PM' },
+  { date: '15 Mar 2026', sehri: '05:17 AM', iftar: '06:30 PM' },
+  { date: '16 Mar 2026', sehri: '05:16 AM', iftar: '06:30 PM' },
+  { date: '17 Mar 2026', sehri: '05:16 AM', iftar: '06:30 PM' },
+  { date: '18 Mar 2026', sehri: '05:15 AM', iftar: '06:30 PM' },
+  { date: '19 Mar 2026 (30 Ramadan)', sehri: '05:14 AM', iftar: '06:30 PM' },
+];
+
+const RAMADAN_AHADEES = [
+  {
+    id: 1,
+    topic: 'Virtue of Ramadan Fasting',
+    text: 'Whoever fasts Ramadan with faith and seeking reward, his past sins are forgiven.',
+    source: 'Sahih al-Bukhari 38, Sahih Muslim 760',
+  },
+  {
+    id: 2,
+    topic: 'Reward for Feeding a Fasting Person',
+    text: 'Whoever gives food for a fasting person to break his fast gets a reward like his, without reducing the fasting person reward.',
+    source: 'Jami at-Tirmidhi 807',
+  },
+  {
+    id: 3,
+    topic: 'Dua at Iftar',
+    text: 'The supplication of a fasting person at the time of breaking fast is not rejected.',
+    source: 'Sunan Ibn Majah 1753',
+  },
+  {
+    id: 4,
+    topic: 'Seeking Laylat al-Qadr',
+    text: 'Seek Laylat al-Qadr in the last ten nights of Ramadan.',
+    source: 'Sahih al-Bukhari 2020, Sahih Muslim 1169',
+  },
+  {
+    id: 5,
+    topic: 'Best Charity in Ramadan',
+    text: 'The Prophet was the most generous of people, and he was even more generous in Ramadan.',
+    source: 'Sahih al-Bukhari 6, Sahih Muslim 2308',
+  },
+  {
+    id: 6,
+    topic: 'Suhoor Blessing',
+    text: 'Take suhoor, for indeed there is blessing in suhoor.',
+    source: 'Sahih al-Bukhari 1923, Sahih Muslim 1095',
+  },
+];
 
 const SKY_GRADIENT_BY_PERIOD = {
   fajr: 'bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900',
@@ -69,6 +140,67 @@ function createCaptchaTextMap() {
     acc[key] = '';
     return acc;
   }, {});
+}
+
+function getTodayCalendarFallback() {
+  const now = new Date();
+  const gregorianLabel = now.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  try {
+    const hijriParts = new Intl.DateTimeFormat('en-u-ca-islamic', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).formatToParts(now);
+
+    const readPart = (type) => hijriParts.find((part) => part.type === type)?.value || '';
+    return {
+      hijriDay: readPart('day'),
+      hijriMonth: readPart('month'),
+      hijriYear: readPart('year'),
+      hijriWeekday: readPart('weekday'),
+      gregorianLabel,
+    };
+  } catch (_error) {
+    return {
+      hijriDay: '',
+      hijriMonth: '',
+      hijriYear: '',
+      hijriWeekday: '',
+      gregorianLabel,
+    };
+  }
+}
+
+function parseCalendarInfoFromApi(datePayload) {
+  if (!datePayload) {
+    return getTodayCalendarFallback();
+  }
+
+  const hijri = datePayload.hijri || {};
+  const gregorian = datePayload.gregorian || {};
+  const fallback = getTodayCalendarFallback();
+
+  const gregorianDateText = [gregorian.day, gregorian.month?.en, gregorian.year]
+    .filter(Boolean)
+    .join(' ');
+  const gregorianLabel = [gregorian.weekday?.en, gregorianDateText]
+    .filter(Boolean)
+    .join(', ');
+
+  return {
+    hijriDay: String(hijri.day || '').trim() || fallback.hijriDay,
+    hijriMonth: String(hijri.month?.en || '').trim() || fallback.hijriMonth,
+    hijriYear: String(hijri.year || '').trim() || fallback.hijriYear,
+    hijriWeekday: String(hijri.weekday?.en || '').trim() || fallback.hijriWeekday,
+    gregorianLabel: gregorianLabel || fallback.gregorianLabel,
+  };
 }
 
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
@@ -178,11 +310,13 @@ function App() {
   const [searchLocation, setSearchLocation] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [prayerTimes, setPrayerTimes] = useState(null);
+  const [calendarInfo, setCalendarInfo] = useState(() => getTodayCalendarFallback());
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState(null);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [showSehriRequestForm, setShowSehriRequestForm] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [showRamadanCalendarModal, setShowRamadanCalendarModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [activeSection, setActiveSection] = useState(() => {
@@ -190,6 +324,12 @@ function App() {
       return 'home';
     }
     const path = window.location.pathname.toLowerCase();
+    if (path.startsWith('/admin')) {
+      return 'admin';
+    }
+    if (path.startsWith('/ahadees')) {
+      return 'ahadees';
+    }
     if (path.startsWith('/about')) {
       return 'about';
     }
@@ -242,6 +382,12 @@ function App() {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersPageLoadingDirection, setProvidersPageLoadingDirection] = useState('');
   const [providersError, setProvidersError] = useState('');
+  const [providerSubmitting, setProviderSubmitting] = useState(false);
+  const [adminSubmissions, setAdminSubmissions] = useState([]);
+  const [adminSubmissionsLoading, setAdminSubmissionsLoading] = useState(false);
+  const [adminSubmissionsError, setAdminSubmissionsError] = useState('');
+  const [adminStatusFilter, setAdminStatusFilter] = useState('pending');
+  const [adminActionLoadingById, setAdminActionLoadingById] = useState({});
   const [formData, setFormData] = useState({
     providerName: '',
     providerType: 'Masjid',
@@ -282,7 +428,11 @@ function App() {
     }
 
     let targetPath = '/';
-    if (section === 'about') {
+    if (section === 'admin') {
+      targetPath = '/admin';
+    } else if (section === 'ahadees') {
+      targetPath = '/ahadees';
+    } else if (section === 'about') {
       targetPath = '/about';
     } else if (section === 'profile') {
       targetPath = '/profile';
@@ -351,6 +501,7 @@ function App() {
         if (data.code === 200 && data.data) {
           setPrayerTimes(data.data.timings);
           calculateNextPrayer(data.data.timings);
+          setCalendarInfo(parseCalendarInfoFromApi(data.data.date));
         }
       } catch (error) {
         console.error('Error fetching prayer times:', error);
@@ -365,6 +516,7 @@ function App() {
         };
         setPrayerTimes(fallbackTimes);
         calculateNextPrayer(fallbackTimes);
+        setCalendarInfo(getTodayCalendarFallback());
       } finally {
         setLoading(false);
       }
@@ -411,6 +563,14 @@ function App() {
   useEffect(() => {
     const syncSectionWithPath = () => {
       const path = window.location.pathname.toLowerCase();
+      if (path.startsWith('/admin')) {
+        setActiveSection('admin');
+        return;
+      }
+      if (path.startsWith('/ahadees')) {
+        setActiveSection('ahadees');
+        return;
+      }
       if (path.startsWith('/about')) {
         setActiveSection('about');
         return;
@@ -503,6 +663,25 @@ function App() {
     setIsRegisterMode(false);
     setShowAuthModal(true);
     navigateToSection('home');
+  }, [activeSection, authUser, navigateToSection]);
+
+  useEffect(() => {
+    if (activeSection !== 'admin') {
+      return;
+    }
+
+    if (!authUser) {
+      setAuthError('Please login as admin to manage provider approvals.');
+      setIsRegisterMode(false);
+      setShowAuthModal(true);
+      navigateToSection('home');
+      return;
+    }
+
+    if (!authUser.isAdmin) {
+      alert('Admin access is required to open this page.');
+      navigateToSection('home');
+    }
   }, [activeSection, authUser, navigateToSection]);
 
   // Load providers from backend API
@@ -634,7 +813,7 @@ function App() {
       controller.abort();
     };
   }, [providersPage, searchLocation, locationFilter]);
-  
+
   const filteredProviders = providers;
   const locationFilterOptions = useMemo(() => {
     const byKey = new Map();
@@ -747,7 +926,7 @@ function App() {
     return true;
   }, [captchaByForm, captchaInputByForm]);
 
-  const parseApiError = async (response, fallbackMessage) => {
+  const parseApiError = useCallback(async (response, fallbackMessage) => {
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       const data = await response.json();
@@ -755,7 +934,7 @@ function App() {
     }
     const rawText = await response.text();
     return rawText || fallbackMessage;
-  };
+  }, []);
 
   const handleAuthInputChange = (e) => {
     const { name, value } = e.target;
@@ -771,6 +950,98 @@ function App() {
     setAuthLoading(false);
     refreshCaptcha('auth');
   };
+
+  const fetchAdminProviderSubmissions = useCallback(async () => {
+    if (!authToken || !authUser?.isAdmin || !ADMIN_PROVIDER_SUBMISSIONS_API_URL) {
+      return;
+    }
+
+    setAdminSubmissionsLoading(true);
+    setAdminSubmissionsError('');
+
+    try {
+      const query = new URLSearchParams({
+        status: adminStatusFilter || 'pending',
+        page: '1',
+        page_size: '100',
+      });
+      const separator = ADMIN_PROVIDER_SUBMISSIONS_API_URL.includes('?') ? '&' : '?';
+      const response = await fetch(
+        `${ADMIN_PROVIDER_SUBMISSIONS_API_URL}${separator}${query.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+          cache: 'no-store',
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Failed to load provider submissions.'));
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      setAdminSubmissions(Array.isArray(payload.data) ? payload.data : []);
+    } catch (error) {
+      console.error('Failed to load admin submissions:', error);
+      setAdminSubmissions([]);
+      setAdminSubmissionsError(error.message || 'Could not load provider submissions.');
+    } finally {
+      setAdminSubmissionsLoading(false);
+    }
+  }, [authToken, authUser?.isAdmin, adminStatusFilter, parseApiError]);
+
+  const handleAdminSubmissionAction = useCallback(async (submissionId, status) => {
+    if (!authToken || !authUser?.isAdmin || !submissionId) {
+      return;
+    }
+
+    setAdminActionLoadingById(prev => ({
+      ...prev,
+      [submissionId]: status,
+    }));
+
+    try {
+      const response = await fetch(`${ADMIN_PROVIDER_SUBMISSIONS_API_URL}/${submissionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          status,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, `Failed to ${status} provider submission.`));
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (payload.message) {
+        alert(payload.message);
+      }
+
+      await fetchAdminProviderSubmissions();
+      setProvidersPage(1);
+    } catch (error) {
+      console.error(`Failed to ${status} submission:`, error);
+      alert(error.message || `Could not ${status} this submission.`);
+    } finally {
+      setAdminActionLoadingById(prev => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+    }
+  }, [authToken, authUser?.isAdmin, fetchAdminProviderSubmissions, parseApiError]);
+
+  useEffect(() => {
+    if (activeSection !== 'admin' || !authUser?.isAdmin) {
+      return;
+    }
+    fetchAdminProviderSubmissions();
+  }, [activeSection, authUser?.isAdmin, fetchAdminProviderSubmissions]);
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -924,6 +1195,9 @@ function App() {
     setShowChatbot(false);
     setProfileMessage('');
     setProfileError('');
+    setAdminSubmissions([]);
+    setAdminSubmissionsError('');
+    setAdminActionLoadingById({});
     navigateToSection('home');
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
@@ -956,33 +1230,61 @@ function App() {
   };
 
   // Handle form submission
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!validateCaptcha('provider')) {
       return;
     }
-    
-    // In a real app, this would send data to a backend
-    console.log('Sehri Provider Request Submitted:', formData);
-    
-    // Show success message (you could use a toast library here)
-    alert(`Thank you! We've received your request for "${formData.providerName}". We'll review and add it to our list soon!`);
-    
-    // Reset form
-    setFormData({
-      providerName: '',
-      providerType: 'Masjid',
-      location: '',
-      address: '',
-      phoneNumber: '',
-      opensAt: '',
-      foodType: '',
-      pricing: 'Free',
-      additionalInfo: ''
-    });
-    refreshCaptcha('provider');
-    
-    setShowRequestForm(false);
+
+    if (!PROVIDER_SUBMISSIONS_API_URL) {
+      alert('Provider submission API is not configured. Set REACT_APP_PROVIDER_SUBMISSIONS_API_URL.');
+      return;
+    }
+
+    setProviderSubmitting(true);
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch(PROVIDER_SUBMISSIONS_API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Failed to submit provider request.'));
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      alert(
+        payload.message ||
+        `Thank you! We've received your request for "${formData.providerName}".`
+      );
+
+      setFormData({
+        providerName: '',
+        providerType: 'Masjid',
+        location: '',
+        address: '',
+        phoneNumber: '',
+        opensAt: '',
+        foodType: '',
+        pricing: 'Free',
+        additionalInfo: ''
+      });
+      refreshCaptcha('provider');
+      setShowRequestForm(false);
+    } catch (error) {
+      console.error('Provider submission failed:', error);
+      alert(error.message || 'Could not submit provider request. Please try again.');
+    } finally {
+      setProviderSubmitting(false);
+    }
   };
 
   const handleSehriRequestChange = (e) => {
@@ -1166,6 +1468,28 @@ function App() {
   const overlayButtonClass = isDarkUiTheme
     ? 'border-white/40 bg-white/10 text-white hover:bg-white/20'
     : 'border-white/80 bg-white/60 text-slate-900 hover:bg-white/80';
+  const calendarPanelClass = isDarkUiTheme
+    ? `bg-gradient-to-br ${headerCardGradientClass} border border-white/25`
+    : 'bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100';
+  const calendarLabelClass = isDarkUiTheme ? 'text-white/85' : 'text-gray-700';
+  const calendarValueClass = isDarkUiTheme ? 'text-white' : 'text-gray-900';
+  const calendarActionClass = isDarkUiTheme
+    ? 'text-white/95 hover:text-white underline decoration-white/60'
+    : 'text-purple-700 hover:text-purple-800 underline decoration-dotted';
+  const calendarModalSurfaceClass = isDarkUiTheme
+    ? 'bg-slate-950 border border-white/20'
+    : 'bg-white';
+  const calendarModalNoteClass = isDarkUiTheme ? 'text-white/80' : 'text-gray-600';
+  const calendarTableBorderClass = isDarkUiTheme ? 'border-white/15' : 'border-gray-200';
+  const calendarTableHeadClass = isDarkUiTheme
+    ? `bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass}`
+    : 'bg-indigo-50 text-gray-800';
+  const calendarTableBodyDividerClass = isDarkUiTheme ? 'divide-white/10' : 'divide-gray-100';
+  const calendarRowEvenClass = isDarkUiTheme ? 'bg-white/5' : 'bg-white';
+  const calendarRowOddClass = isDarkUiTheme ? 'bg-white/10' : 'bg-gray-50';
+  const calendarTableStrongTextClass = isDarkUiTheme ? 'text-white' : 'text-gray-800';
+  const calendarTableMutedTextClass = isDarkUiTheme ? 'text-white/85' : 'text-gray-700';
+  const isAdminUser = Boolean(authUser?.isAdmin);
   const authDisplayName = (authUser?.name || '').trim() || 'User';
   const authInitials = authDisplayName
     .split(/\s+/)
@@ -1234,7 +1558,7 @@ function App() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-1">
-                Bangalore Sehri Finder
+                BangaloreSehri
               </h1>
               <p className={`${headerSubTextClass} text-xs md:text-sm`}>
                 Find Sehri at Masjids, Volunteers & Restaurants
@@ -1301,6 +1625,25 @@ function App() {
               Request Sehri
             </button>
             <button
+              onClick={() => {
+                navigateToSection('home');
+                requireAuth(() => setShowRequestForm(true));
+              }}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${navInactiveButtonClass}`}
+            >
+              Register Provider
+            </button>
+            <button
+              onClick={() => navigateToSection('ahadees')}
+              className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
+                activeSection === 'ahadees'
+                  ? navActiveButtonClass
+                  : navInactiveButtonClass
+              }`}
+            >
+              Ahadees
+            </button>
+            <button
               onClick={() => navigateToSection('about')}
               className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
                 activeSection === 'about'
@@ -1310,6 +1653,18 @@ function App() {
             >
               About Us
             </button>
+            {isAdminUser && (
+              <button
+                onClick={() => navigateToSection('admin')}
+                className={`px-4 py-2 text-sm rounded-full font-semibold transition-all whitespace-nowrap border ${
+                  activeSection === 'admin'
+                    ? navActiveButtonClass
+                    : navInactiveButtonClass
+                }`}
+              >
+                Admin
+              </button>
+            )}
             {authUser && (
               <button
                 onClick={() => navigateToSection('profile')}
@@ -1399,6 +1754,31 @@ function App() {
                 </div>
               </div>
             ) : null}
+
+            {!loading && (
+              <div className="mt-4">
+                <div className={`${calendarPanelClass} rounded-lg p-3`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${calendarLabelClass}`}>
+                    Islamic Calendar (Hijri)
+                  </p>
+                  <p className={`text-lg font-bold mt-1 ${calendarValueClass}`}>
+                    {calendarInfo.hijriDay && calendarInfo.hijriMonth && calendarInfo.hijriYear
+                      ? `${calendarInfo.hijriDay} ${calendarInfo.hijriMonth} ${calendarInfo.hijriYear} AH`
+                      : 'Hijri date unavailable'}
+                  </p>
+                  {calendarInfo.hijriWeekday && (
+                    <p className={`text-sm mt-1 ${calendarLabelClass}`}>{calendarInfo.hijriWeekday}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowRamadanCalendarModal(true)}
+                    className={`mt-3 text-sm font-semibold ${calendarActionClass}`}
+                  >
+                    View Bangalore Ramadan Sehri/Iftar Calendar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1514,9 +1894,19 @@ function App() {
                   {/* Card Content */}
                   <div className="p-5">
                     <div className="mb-2">
-                      <h3 className="text-lg font-bold text-gray-800">
-                        {provider.name}
-                      </h3>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-lg font-bold text-gray-800">
+                          {provider.name}
+                        </h3>
+                        {provider.isVerified !== false && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold whitespace-nowrap">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                              <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.42l2.293 2.294 6.793-6.794a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Verified
+                          </span>
+                        )}
+                      </div>
                       <span className={`inline-block text-xs font-semibold px-2 py-1 rounded mt-1 ${
                         provider.type === 'Masjid' ? 'bg-purple-100 text-purple-700' :
                         provider.type === 'Volunteer' ? 'bg-green-100 text-green-700' :
@@ -1597,7 +1987,7 @@ function App() {
                           `📍 Location: ${provider.address}\n` +
                           `🕐 Opens: ${provider.opens}\n` +
                           `🍽️ Food: ${provider.foodType}\n\n` +
-                          `Found on Bangalore Sehri Finder`
+                          `Found on BangaloreSehri`
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -1667,29 +2057,189 @@ function App() {
           </>
         )}
 
+        {/* Ahadees Section */}
+        {activeSection === 'ahadees' && (
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 md:p-10">
+              <div className="text-center mb-8 max-w-3xl mx-auto">
+                <div className="text-5xl sm:text-6xl mb-4">📖</div>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-3">
+                  Ramadan Ahadees
+                </h2>
+                <p className="text-lg text-gray-600">
+                  Authentic reminders for fasting, charity, suhoor, iftar, and the last ten nights.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                {RAMADAN_AHADEES.map((hadith) => (
+                  <article
+                    key={hadith.id}
+                    className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50 p-4 sm:p-5"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-700 mb-2">
+                      {hadith.topic}
+                    </p>
+                    <p className="text-gray-800 leading-relaxed">{hadith.text}</p>
+                    <p className="mt-3 text-xs font-medium text-gray-600">{hadith.source}</p>
+                  </article>
+                ))}
+              </div>
+
+              <div className={`mt-6 rounded-xl border border-white/25 bg-gradient-to-r ${headerCardGradientClass} p-4 sm:p-5`}>
+                <p className={`text-sm ${headerSubTextClass}`}>
+                  Note: For personal religious rulings, please consult a trusted local scholar.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Admin Section */}
+        {activeSection === 'admin' && isAdminUser && (
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Provider Approval Admin</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Review provider submissions. Only approved submissions are published.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <select
+                    value={adminStatusFilter}
+                    onChange={(e) => setAdminStatusFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="all">All</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={fetchAdminProviderSubmissions}
+                    disabled={adminSubmissionsLoading}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold border ${overlayButtonClass} disabled:opacity-60 disabled:cursor-not-allowed`}
+                  >
+                    {adminSubmissionsLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+              </div>
+
+              {adminSubmissionsLoading && (
+                <p className="text-sm text-gray-600 mb-4">Loading provider submissions...</p>
+              )}
+              {adminSubmissionsError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                  {adminSubmissionsError}
+                </p>
+              )}
+
+              {!adminSubmissionsLoading && !adminSubmissionsError && adminSubmissions.length === 0 && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-gray-600">
+                  No provider submissions found for this status.
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {adminSubmissions.map((submission) => {
+                  const submissionStatus = (submission.status || '').toLowerCase();
+                  const actionInProgress = adminActionLoadingById[submission.id] || '';
+                  const canReview = submissionStatus === 'pending';
+                  const statusBadgeClass =
+                    submissionStatus === 'approved'
+                      ? 'bg-green-100 text-green-700'
+                      : submissionStatus === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700';
+
+                  return (
+                    <article key={submission.id} className="rounded-xl border border-gray-200 p-4 sm:p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-800">{submission.providerName || 'Unnamed Provider'}</h3>
+                          <p className="text-sm text-gray-600">
+                            {submission.providerType || 'Unknown'} • {submission.pricing || 'N/A'}
+                          </p>
+                        </div>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase ${statusBadgeClass}`}>
+                          {submissionStatus || 'pending'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm">
+                        <p><span className="font-semibold text-gray-700">Location:</span> <span className="text-gray-600">{submission.location || '-'}</span></p>
+                        <p><span className="font-semibold text-gray-700">Address:</span> <span className="text-gray-600">{submission.address || '-'}</span></p>
+                        <p><span className="font-semibold text-gray-700">Opens:</span> <span className="text-gray-600">{submission.opensAt || '-'}</span></p>
+                        <p><span className="font-semibold text-gray-700">Phone:</span> <span className="text-gray-600">{submission.phoneNumber || '-'}</span></p>
+                        <p><span className="font-semibold text-gray-700">Food:</span> <span className="text-gray-600">{submission.foodType || '-'}</span></p>
+                        <p><span className="font-semibold text-gray-700">Submitted By:</span> <span className="text-gray-600">{submission.submittedByName || submission.submittedByEmail || 'Guest'}</span></p>
+                      </div>
+
+                      {submission.additionalInfo && (
+                        <p className="mt-3 text-sm text-gray-700">
+                          <span className="font-semibold">Notes:</span> {submission.additionalInfo}
+                        </p>
+                      )}
+                      {submission.reviewNote && (
+                        <p className="mt-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                          <span className="font-semibold">Review Note:</span> {submission.reviewNote}
+                        </p>
+                      )}
+
+                      {canReview && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAdminSubmissionAction(submission.id, 'approved')}
+                            disabled={Boolean(actionInProgress)}
+                            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {actionInProgress === 'approved' ? 'Approving...' : 'Approve'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdminSubmissionAction(submission.id, 'rejected')}
+                            disabled={Boolean(actionInProgress)}
+                            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {actionInProgress === 'rejected' ? 'Rejecting...' : 'Reject'}
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* About Us Section */}
         {activeSection === 'about' && (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 md:p-12">
-              <div className="text-center mb-8">
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 md:p-10">
+              <div className="text-center mb-10 max-w-3xl mx-auto">
                 <div className="text-5xl sm:text-6xl mb-4">🌙</div>
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-                  About Bangalore Sehri Finder
+                  About BangaloreSehri
                 </h2>
                 <p className="text-lg text-gray-600">
                   Connecting the community with Sehri services during Ramadan
                 </p>
               </div>
 
-              <div className="space-y-8">
+              <div className="space-y-8 text-left">
                 {/* Mission */}
-                <div className="border-l-4 border-purple-500 pl-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <div className="border-l-4 border-purple-500 pl-5 sm:pl-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-3">
                     <span>🎯</span> Our Mission
                   </h3>
                   <p className="text-gray-600 leading-relaxed">
                     During the blessed month of Ramadan, finding places that serve Sehri (pre-dawn meal) 
-                    can be challenging. Bangalore Sehri Finder was created to connect the Muslim community 
+                    can be challenging. BangaloreSehri was created to connect the Muslim community 
                     in Bangalore with Masjids offering free Sehri, volunteer groups serving the community, 
                     and restaurants with early morning services. Whether you're looking for free community 
                     Sehri or restaurants, we make it easy to find the perfect place for your pre-fast meal. 
@@ -1698,8 +2248,8 @@ function App() {
                 </div>
 
                 {/* Features */}
-                <div className="border-l-4 border-pink-500 pl-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <div className="border-l-4 border-pink-500 pl-5 sm:pl-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-3">
                     <span>✨</span> What We Offer
                   </h3>
                   <ul className="space-y-3 text-gray-600">
@@ -1743,8 +2293,8 @@ function App() {
                 </div>
 
                 {/* Community */}
-                <div className="border-l-4 border-indigo-500 pl-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <div className="border-l-4 border-indigo-500 pl-5 sm:pl-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-3">
                     <span>🤝</span> Community Driven
                   </h3>
                   <p className="text-gray-600 leading-relaxed mb-4">
@@ -1766,7 +2316,7 @@ function App() {
 
                 {/* Contact */}
                 <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-gray-800 mb-3">
                     <span>📧</span> Get in Touch
                   </h3>
                   <p className="text-gray-600 leading-relaxed">
@@ -1776,7 +2326,7 @@ function App() {
                 </div>
 
                 {/* Ramadan Message */}
-                <div className="text-center bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white rounded-xl p-8">
+                <div className="text-center bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white rounded-xl p-6 sm:p-8">
                   <h3 className="text-2xl font-bold mb-3">Ramadan Mubarak! 🌙</h3>
                   <p className="text-indigo-100">
                     May this blessed month bring peace, prosperity, and joy to you and your loved ones.
@@ -2042,7 +2592,7 @@ function App() {
                     {isRegisterMode ? 'Create Account' : 'Login'}
                   </h2>
                   <p className={`${headerSubTextClass} text-sm`}>
-                    {isRegisterMode ? 'Register to use chatbot and manage your activity.' : 'Login to use the chatbot.'}
+                    {isRegisterMode ? 'Register to use chatbot and manage your activity.' : 'login to chat with Hala your AI assistant'}
                   </p>
                 </div>
                 <button
@@ -2354,9 +2904,10 @@ function App() {
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl`}
+                  disabled={providerSubmitting}
+                  className={`flex-1 px-6 py-3 ${primaryTimingButtonClass} font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
-                  Submit Request
+                  {providerSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
             </form>
@@ -2600,6 +3151,64 @@ function App() {
         </div>
       )}
 
+      {/* Ramadan Calendar Modal */}
+      {showRamadanCalendarModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className={`${calendarModalSurfaceClass} rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-4xl w-full max-h-[94vh] sm:max-h-[90vh] overflow-hidden`}>
+            <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">Bangalore Ramadan Calendar 2026</h2>
+                  <p className={`${headerSubTextClass} text-sm`}>
+                    Sehri (Suhoor) and Iftar timetable
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowRamadanCalendarModal(false)}
+                  className="hover:bg-white/20 rounded-full p-2 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(94vh-88px)] sm:max-h-[calc(90vh-96px)]">
+              <p className={`text-sm mb-4 ${calendarModalNoteClass}`}>
+                These timings are approximate for Bangalore. Please confirm locally with your nearby mosque.
+              </p>
+
+              <div className={`rounded-lg border overflow-hidden ${calendarTableBorderClass}`}>
+                <table className="w-full table-fixed text-xs sm:text-sm">
+                  <colgroup>
+                    <col className="w-1/2" />
+                    <col className="w-1/4" />
+                    <col className="w-1/4" />
+                  </colgroup>
+                  <thead className={calendarTableHeadClass}>
+                    <tr>
+                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Date</th>
+                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Sehri</th>
+                      <th className="text-left px-2 sm:px-4 py-2.5 sm:py-3 font-semibold">Iftar</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${calendarTableBodyDividerClass}`}>
+                    {BANGALORE_RAMADAN_CALENDAR.map((row, index) => (
+                      <tr key={row.date} className={index % 2 === 0 ? calendarRowEvenClass : calendarRowOddClass}>
+                        <td className={`px-2 sm:px-4 py-2.5 font-semibold break-words leading-snug ${calendarTableStrongTextClass}`}>{row.date}</td>
+                        <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.sehri}</td>
+                        <td className={`px-2 sm:px-4 py-2.5 whitespace-nowrap ${calendarTableMutedTextClass}`}>{row.iftar}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Feedback Modal */}
       {showFeedbackForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
@@ -2609,7 +3218,7 @@ function App() {
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold mb-2">Share Feedback</h2>
                   <p className={`${headerSubTextClass} text-sm`}>
-                    Help us improve the Sehri Finder experience.
+                    Help us improve the BangaloreSehri experience.
                   </p>
                 </div>
                 <button
@@ -2719,19 +3328,17 @@ function App() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-4">
             <p className="text-sm">
-              © 2026 Bangalore Sehri Finder. Made with ❤️ for the community.
+              © 2026 BangaloreSehri. Made with ❤️ for the community.
             </p>
             <p className="text-xs text-gray-400 mt-2">
               Prayer times may vary. Please confirm with your local mosque.
             </p>
-            <a
-              href={DONATION_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
               className="inline-flex items-center gap-2 mt-3 text-sm font-semibold text-emerald-300 hover:text-emerald-200 transition-colors"
             >
               Support this project - Donate
-            </a>
+            </button>
           </div>
           
           {/* Visitor Counter */}
@@ -2753,4 +3360,5 @@ function App() {
 }
 
 export default App;
+
 
