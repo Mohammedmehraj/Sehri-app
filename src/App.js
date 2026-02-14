@@ -86,6 +86,39 @@ const RAMADAN_AHADEES = [
   },
 ];
 
+const ISLAMIC_QUOTES = [
+  {
+    id: 1,
+    text: 'Allah does not burden a soul beyond that it can bear.',
+    source: 'Quran 2:286',
+  },
+  {
+    id: 2,
+    text: 'Indeed, with hardship comes ease.',
+    source: 'Quran 94:6',
+  },
+  {
+    id: 3,
+    text: 'The best among you are those who have the best manners and character.',
+    source: 'Sahih al-Bukhari 3559',
+  },
+  {
+    id: 4,
+    text: 'The strong person is not the one who can wrestle, but the one who controls himself when angry.',
+    source: 'Sahih al-Bukhari 6114, Sahih Muslim 2609',
+  },
+  {
+    id: 5,
+    text: 'Whoever believes in Allah and the Last Day should speak good or remain silent.',
+    source: 'Sahih al-Bukhari 6018, Sahih Muslim 47',
+  },
+  {
+    id: 6,
+    text: 'The most beloved deeds to Allah are those done regularly, even if they are few.',
+    source: 'Sahih al-Bukhari 6464, Sahih Muslim 783',
+  },
+];
+
 const SKY_GRADIENT_BY_PERIOD = {
   fajr: 'bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900',
   sunrise: 'bg-gradient-to-b from-orange-300 via-pink-300 to-yellow-200',
@@ -472,6 +505,7 @@ function App() {
     message: ''
   });
   const [showEntryAnimation, setShowEntryAnimation] = useState(true);
+  const [activeIslamicQuoteIndex, setActiveIslamicQuoteIndex] = useState(0);
 
   const ramadanCalendarRows = useMemo(() => (
     BANGALORE_RAMADAN_CALENDAR.map((row, index) => ({
@@ -596,6 +630,33 @@ function App() {
     setSelectedRamadanDay(1);
     setShowRamadanCalendarModal(true);
   }, []);
+
+  const handlePreviousIslamicQuote = useCallback(() => {
+    setActiveIslamicQuoteIndex((prev) => (
+      prev === 0 ? ISLAMIC_QUOTES.length - 1 : prev - 1
+    ));
+  }, []);
+
+  const handleNextIslamicQuote = useCallback(() => {
+    setActiveIslamicQuoteIndex((prev) => (
+      (prev + 1) % ISLAMIC_QUOTES.length
+    ));
+  }, []);
+
+  const handleRandomIslamicQuote = useCallback(() => {
+    if (ISLAMIC_QUOTES.length <= 1) {
+      return;
+    }
+    setActiveIslamicQuoteIndex((prev) => {
+      let next = prev;
+      while (next === prev) {
+        next = Math.floor(Math.random() * ISLAMIC_QUOTES.length);
+      }
+      return next;
+    });
+  }, []);
+
+  const activeIslamicQuote = ISLAMIC_QUOTES[activeIslamicQuoteIndex] || ISLAMIC_QUOTES[0];
   
   // Fetch prayer times for Bangalore
   useEffect(() => {
@@ -1610,6 +1671,15 @@ function App() {
   const calendarSelectedBadgeClass = isDarkUiTheme
     ? 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-200'
     : 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700';
+  const ledAdPanelClass = isDarkUiTheme
+    ? 'bg-gradient-to-br from-indigo-950/95 via-blue-950/90 to-slate-900/95 border border-white/20'
+    : 'bg-gradient-to-br from-indigo-700 via-blue-700 to-slate-800 border border-indigo-200';
+  const ledAdLabelClass = isDarkUiTheme ? 'text-sky-200/90' : 'text-sky-100';
+  const ledAdTextClass = isDarkUiTheme ? 'text-sky-100' : 'text-white';
+  const ledAdSourceClass = isDarkUiTheme ? 'text-white/75' : 'text-white/80';
+  const ledAdButtonClass = isDarkUiTheme
+    ? 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/30 text-white bg-white/10 hover:bg-white/20 transition-colors'
+    : 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/40 text-white bg-white/15 hover:bg-white/25 transition-colors';
   const isAdminUser = Boolean(authUser?.isAdmin);
   const authDisplayName = (authUser?.name || '').trim() || 'User';
   const authInitials = authDisplayName
@@ -1877,8 +1947,8 @@ function App() {
             ) : null}
 
             {!loading && (
-              <div className="mt-4">
-                <div className={`${calendarPanelClass} rounded-lg p-3`}>
+              <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className={`${calendarPanelClass} rounded-lg p-3 lg:col-span-2`}>
                   <p className={`text-xs font-semibold uppercase tracking-wide ${calendarLabelClass}`}>
                     Islamic Calendar (Hijri)
                   </p>
@@ -1895,8 +1965,49 @@ function App() {
                     onClick={openRamadanCalendarModal}
                     className={`mt-3 text-sm font-semibold ${calendarActionClass}`}
                   >
-                    Open Bangalore Ramadan Time Explorer
+                    View Sehri/Iftar timings for Ramadan 2026
                   </button>
+                </div>
+
+                <div className={`${ledAdPanelClass} rounded-lg p-3`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${ledAdLabelClass}`}>
+                      Reminder
+                    </p>
+                  </div>
+                  <p
+                    className={`text-[12px] leading-relaxed font-medium ${ledAdTextClass}`}
+                  >
+                    {activeIslamicQuote.text}
+                  </p>
+                  <p className={`mt-2 text-[10px] font-semibold ${ledAdSourceClass}`}>
+                    {activeIslamicQuote.source}
+                  </p>
+                  <div className="mt-3 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handlePreviousIslamicQuote}
+                      className={ledAdButtonClass}
+                      aria-label="Previous quote"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRandomIslamicQuote}
+                      className={`${ledAdButtonClass} px-2.5`}
+                    >
+                      Random
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextIslamicQuote}
+                      className={ledAdButtonClass}
+                      aria-label="Next quote"
+                    >
+                      ›
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
