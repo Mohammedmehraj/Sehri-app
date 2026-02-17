@@ -504,6 +504,8 @@ function App() {
   ]);
   const [chatInput, setChatInput] = useState('');
   const chatMessagesEndRef = useRef(null);
+  const adminSehriDateFromInputRef = useRef(null);
+  const adminSehriDateToInputRef = useRef(null);
   const [visitorCount, setVisitorCount] = useState(0);
   const [providers, setProviders] = useState(mockProviders.slice(0, PROVIDERS_PAGE_SIZE));
   const [providersPage, setProvidersPage] = useState(1);
@@ -1317,6 +1319,10 @@ function App() {
     if (!authToken || !authUser?.isAdmin || !ADMIN_SEHRI_EXPORT_API_URL) {
       return;
     }
+    if (adminSehriDateFrom && adminSehriDateTo && adminSehriDateFrom > adminSehriDateTo) {
+      alert('From date cannot be after To date.');
+      return;
+    }
 
     setAdminSehriExportLoading(true);
     try {
@@ -1890,6 +1896,11 @@ function App() {
     ? 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/30 text-white bg-white/10 hover:bg-white/20 transition-colors'
     : 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/40 text-white bg-white/15 hover:bg-white/25 transition-colors';
   const isAdminUser = Boolean(authUser?.isAdmin);
+  const hasInvalidAdminSehriDateRange = Boolean(
+    adminSehriDateFrom
+    && adminSehriDateTo
+    && adminSehriDateFrom > adminSehriDateTo
+  );
   const shouldShowNavbar = SHOW_NAVBAR || isAdminUser || activeSection === 'admin';
   const authDisplayName = (authUser?.name || '').trim() || 'User';
   const authInitials = authDisplayName
@@ -1901,6 +1912,19 @@ function App() {
     .toUpperCase();
   const captchaBlockClass = 'bg-gray-50 border-gray-200';
   const captchaTextClass = 'text-gray-800';
+
+  const openAdminDatePicker = useCallback((inputRef) => {
+    const input = inputRef?.current;
+    if (!input) {
+      return;
+    }
+    if (typeof input.showPicker === 'function') {
+      input.showPicker();
+      return;
+    }
+    input.focus();
+    input.click();
+  }, []);
 
   const renderCaptchaField = (formKey) => {
     const challenge = captchaByForm[formKey];
@@ -2848,32 +2872,55 @@ function App() {
                       View community Sehri requests, download Excel, and monitor basic analytics.
                     </p>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                    <input
-                      type="date"
-                      value={adminSehriDateFrom}
-                      onChange={(e) => setAdminSehriDateFrom(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-                      aria-label="From date"
-                    />
-                    <input
-                      type="date"
-                      value={adminSehriDateTo}
-                      onChange={(e) => setAdminSehriDateTo(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-                      aria-label="To date"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const today = new Date().toISOString().slice(0, 10);
-                        setAdminSehriDateFrom(today);
-                        setAdminSehriDateTo(today);
-                      }}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Today
-                    </button>
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-end">
+                    <label className="flex flex-col text-xs font-semibold text-gray-600">
+                      From
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <input
+                          ref={adminSehriDateFromInputRef}
+                          type="date"
+                          value={adminSehriDateFrom}
+                          onChange={(e) => setAdminSehriDateFrom(e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                          aria-label="From date"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => openAdminDatePicker(adminSehriDateFromInputRef)}
+                          className="h-9 w-9 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center"
+                          aria-label="Open from date calendar"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="16" rx="2" strokeWidth="2"></rect>
+                            <path d="M16 3v4M8 3v4M3 10h18" strokeWidth="2" strokeLinecap="round"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </label>
+                    <label className="flex flex-col text-xs font-semibold text-gray-600">
+                      To
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <input
+                          ref={adminSehriDateToInputRef}
+                          type="date"
+                          value={adminSehriDateTo}
+                          onChange={(e) => setAdminSehriDateTo(e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                          aria-label="To date"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => openAdminDatePicker(adminSehriDateToInputRef)}
+                          className="h-9 w-9 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center"
+                          aria-label="Open to date calendar"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="16" rx="2" strokeWidth="2"></rect>
+                            <path d="M16 3v4M8 3v4M3 10h18" strokeWidth="2" strokeLinecap="round"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </label>
                     <button
                       type="button"
                       onClick={() => {
@@ -2890,7 +2937,7 @@ function App() {
                         fetchAdminSehriRequests();
                         fetchAdminSehriAnalytics();
                       }}
-                      disabled={adminSehriRequestsLoading || adminSehriAnalyticsLoading}
+                      disabled={adminSehriRequestsLoading || adminSehriAnalyticsLoading || hasInvalidAdminSehriDateRange}
                       className={`px-4 py-2 rounded-lg text-sm font-semibold border ${overlayButtonClass} disabled:opacity-60 disabled:cursor-not-allowed`}
                     >
                       {(adminSehriRequestsLoading || adminSehriAnalyticsLoading) ? 'Refreshing...' : 'Refresh'}
@@ -2898,13 +2945,22 @@ function App() {
                     <button
                       type="button"
                       onClick={downloadSehriRequestsExcel}
-                      disabled={adminSehriExportLoading}
+                      disabled={adminSehriExportLoading || hasInvalidAdminSehriDateRange}
                       className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {adminSehriExportLoading ? 'Preparing Excel...' : 'Download Excel'}
                     </button>
                   </div>
                 </div>
+
+                {hasInvalidAdminSehriDateRange && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                    From date cannot be after To date.
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mb-4">
+                  Download Excel uses the selected From/To date range.
+                </p>
 
                 {adminSehriAnalyticsLoading && (
                   <p className="text-sm text-gray-600 mb-4">Loading Sehri analytics...</p>
