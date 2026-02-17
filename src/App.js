@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import PrayerCountdownRing from './components/PrayerCountdownRing';
 
@@ -1312,7 +1312,7 @@ function App() {
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const contentDisposition = response.headers.get('content-disposition') || '';
-      const fileNameMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const fileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
       const fallbackName = `sehri-requests-${new Date().toISOString().slice(0, 10)}.csv`;
       const fileName = fileNameMatch?.[1] || fallbackName;
 
