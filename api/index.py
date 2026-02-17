@@ -2,7 +2,9 @@ import hashlib
 import os
 import re
 import secrets
+from csv import writer as csv_writer
 from datetime import date, datetime, timedelta, timezone
+from io import StringIO
 from typing import Any
 
 from dotenv import load_dotenv
@@ -529,6 +531,154 @@ def normalize_provider_submission(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_sehri_request(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document.get("_id", "")),
+        "fullName": str(document.get("full_name", "")).strip(),
+        "gender": str(document.get("gender", "")).strip(),
+        "mobileNumber": str(document.get("mobile_number", "")).strip(),
+        "email": str(document.get("email", "")).strip().lower(),
+        "alternativeNumber": str(document.get("alternative_number", "")).strip(),
+        "address": str(document.get("address", "")).strip(),
+        "landmark": str(document.get("landmark", "")).strip(),
+        "pincode": str(document.get("pincode", "")).strip(),
+        "city": str(document.get("city", "")).strip(),
+        "sehriCount": int(document.get("sehri_count", 0) or 0),
+        "locationType": str(document.get("location_type", "")).strip(),
+        "submissionSource": str(document.get("submission_source", "guest")).strip().lower() or "guest",
+        "status": str(document.get("status", "pending")).strip().lower() or "pending",
+        "requestedByName": str(document.get("requested_by_name", "")).strip(),
+        "requestedByEmail": str(document.get("requested_by_email", "")).strip().lower(),
+        "requestedByUserId": str(document.get("requested_by_user_id", "")).strip(),
+        "createdAt": serialize_mongo_value(document.get("created_at")),
+        "updatedAt": serialize_mongo_value(document.get("updated_at")),
+    }
+
+
+def get_iso_day_label(value: Any) -> str:
+    if isinstance(value, datetime):
+        normalized = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return normalized.date().isoformat()
+    return ""
+
+
+def parse_query_date(value: str | None, field_name: str) -> date | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    try:
+        return date.fromisoformat(cleaned)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name} must be YYYY-MM-DD.") from exc
+
+
+def build_created_at_date_range_filter(date_from_raw: str | None, date_to_raw: str | None) -> dict[str, datetime] | None:
+    date_from_value = parse_query_date(date_from_raw, "date_from")
+    date_to_value = parse_query_date(date_to_raw, "date_to")
+
+    if date_from_value and date_to_value and date_from_value > date_to_value:
+        raise HTTPException(status_code=422, detail="date_from cannot be after date_to.")
+
+    if not date_from_value and not date_to_value:
+        return None
+
+    created_at_range: dict[str, datetime] = {}
+    if date_from_value:
+        created_at_range["$gte"] = datetime.combine(date_from_value, datetime.min.time(), tzinfo=timezone.utc)
+    if date_to_value:
+        next_day = date_to_value + timedelta(days=1)
+        created_at_range["$lt"] = datetime.combine(next_day, datetime.min.time(), tzinfo=timezone.utc)
+    return created_at_range
+
+
+def compute_sehri_analytics(documents: list[dict[str, Any]], days: int = 7) -> dict[str, Any]:
+    now = utc_now()
+    today_iso = now.date().isoformat()
+    safe_days = max(1, min(days, 30))
+
+    status_counts: dict[str, int] = {}
+    city_counts: dict[str, int] = {}
+    location_type_counts: dict[str, int] = {}
+    gender_counts: dict[str, int] = {}
+
+    total_meals_requested = 0
+    today_requests = 0
+    authenticated_requests = 0
+    guest_requests = 0
+
+    for document in documents:
+        status = str(document.get("status", "pending")).strip().lower() or "pending"
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+        city = str(document.get("city", "")).strip() or "Unknown"
+        city_counts[city] = city_counts.get(city, 0) + 1
+
+        location_type = str(document.get("location_type", "")).strip() or "Unknown"
+        location_type_counts[location_type] = location_type_counts.get(location_type, 0) + 1
+
+        gender = str(document.get("gender", "")).strip() or "Unknown"
+        gender_counts[gender] = gender_counts.get(gender, 0) + 1
+
+        meal_count_raw = document.get("sehri_count", 0)
+        try:
+            meal_count = int(meal_count_raw)
+        except Exception:
+            meal_count = 0
+        if meal_count > 0:
+            total_meals_requested += meal_count
+
+        source = str(document.get("submission_source", "guest")).strip().lower()
+        if source == "authenticated":
+            authenticated_requests += 1
+        else:
+            guest_requests += 1
+
+        created_at = document.get("created_at")
+        if get_iso_day_label(created_at) == today_iso:
+            today_requests += 1
+
+    daily_counts_map: dict[str, int] = {}
+    for offset in range(safe_days - 1, -1, -1):
+        label = (now - timedelta(days=offset)).date().isoformat()
+        daily_counts_map[label] = 0
+
+    for document in documents:
+        label = get_iso_day_label(document.get("created_at"))
+        if label in daily_counts_map:
+            daily_counts_map[label] += 1
+
+    def to_sorted_top_counts(raw: dict[str, int], limit: int = 5) -> list[dict[str, Any]]:
+        ordered = sorted(raw.items(), key=lambda item: (-item[1], item[0].lower()))
+        return [
+            {"label": label, "count": count}
+            for label, count in ordered[:limit]
+        ]
+
+    return {
+        "summary": {
+            "totalRequests": len(documents),
+            "pendingRequests": status_counts.get("pending", 0),
+            "approvedRequests": status_counts.get("approved", 0),
+            "rejectedRequests": status_counts.get("rejected", 0),
+            "todayRequests": today_requests,
+            "totalMealsRequested": total_meals_requested,
+            "averageMealsPerRequest": round((total_meals_requested / len(documents)), 2) if documents else 0,
+            "guestRequests": guest_requests,
+            "authenticatedRequests": authenticated_requests,
+        },
+        "statusBreakdown": to_sorted_top_counts(status_counts, limit=10),
+        "cityBreakdown": to_sorted_top_counts(city_counts, limit=10),
+        "locationTypeBreakdown": to_sorted_top_counts(location_type_counts, limit=10),
+        "genderBreakdown": to_sorted_top_counts(gender_counts, limit=10),
+        "lastDaysTrend": [
+            {"date": label, "count": count}
+            for label, count in daily_counts_map.items()
+        ],
+    }
+
+
 def build_location_search_blob(document: dict[str, Any], normalized: dict[str, Any]) -> str:
     location_keys = (
         "location",
@@ -905,6 +1055,170 @@ def update_provider_submission_status(
         ),
         "submission": normalize_provider_submission(updated_submission),
     }
+
+
+@app.get("/admin/sehri-requests")
+@app.get("/api/admin/sehri-requests")
+def list_sehri_requests_for_admin(
+    authorization: str | None = Header(default=None),
+    status: str = Query(default="all"),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    get_current_admin_user(authorization)
+
+    status_filter = status.strip().lower()
+    if status_filter not in {"pending", "approved", "rejected", "all"}:
+        raise HTTPException(status_code=422, detail="Status must be pending, approved, rejected, or all.")
+
+    query: dict[str, Any] = {}
+    if status_filter != "all":
+        query["status"] = status_filter
+    created_at_range = build_created_at_date_range_filter(date_from, date_to)
+    if created_at_range:
+        query["created_at"] = created_at_range
+
+    try:
+        collection = get_sehri_requests_collection()
+        documents = list(collection.find(query).sort("created_at", -1))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    total = len(documents)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    safe_page = min(page, total_pages)
+    start_index = (safe_page - 1) * page_size
+    end_index = start_index + page_size
+    items = [normalize_sehri_request(doc) for doc in documents[start_index:end_index]]
+
+    return {
+        "data": items,
+        "pagination": {
+            "page": safe_page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": safe_page < total_pages,
+            "has_prev": safe_page > 1,
+        },
+    }
+
+
+@app.get("/admin/sehri-requests/export")
+@app.get("/api/admin/sehri-requests/export")
+def export_sehri_requests_for_admin(
+    authorization: str | None = Header(default=None),
+    status: str = Query(default="all"),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+) -> Response:
+    get_current_admin_user(authorization)
+
+    status_filter = status.strip().lower()
+    if status_filter not in {"pending", "approved", "rejected", "all"}:
+        raise HTTPException(status_code=422, detail="Status must be pending, approved, rejected, or all.")
+
+    query: dict[str, Any] = {}
+    if status_filter != "all":
+        query["status"] = status_filter
+    created_at_range = build_created_at_date_range_filter(date_from, date_to)
+    if created_at_range:
+        query["created_at"] = created_at_range
+
+    try:
+        documents = list(get_sehri_requests_collection().find(query).sort("created_at", -1))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    output = StringIO()
+    csv = csv_writer(output)
+    csv.writerow(
+        [
+            "Request ID",
+            "Full Name",
+            "Gender",
+            "Mobile Number",
+            "Email",
+            "Alternative Number",
+            "Address",
+            "Landmark",
+            "Pincode",
+            "City",
+            "Sehri Count",
+            "Location Type",
+            "Submission Source",
+            "Requested By Name",
+            "Requested By Email",
+            "Created At",
+            "Updated At",
+        ]
+    )
+
+    for document in documents:
+        normalized = normalize_sehri_request(document)
+        csv.writerow(
+            [
+                normalized.get("id", ""),
+                normalized.get("fullName", ""),
+                normalized.get("gender", ""),
+                normalized.get("mobileNumber", ""),
+                normalized.get("email", ""),
+                normalized.get("alternativeNumber", ""),
+                normalized.get("address", ""),
+                normalized.get("landmark", ""),
+                normalized.get("pincode", ""),
+                normalized.get("city", ""),
+                normalized.get("sehriCount", 0),
+                normalized.get("locationType", ""),
+                normalized.get("submissionSource", ""),
+                normalized.get("requestedByName", ""),
+                normalized.get("requestedByEmail", ""),
+                normalized.get("createdAt", ""),
+                normalized.get("updatedAt", ""),
+            ]
+        )
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    file_name = f"sehri-requests-{timestamp}.csv"
+    csv_content = output.getvalue()
+    output.close()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+        "Cache-Control": "no-store",
+    }
+    return Response(content="\ufeff" + csv_content, media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@app.get("/admin/sehri-analytics")
+@app.get("/api/admin/sehri-analytics")
+def get_sehri_analytics_for_admin(
+    authorization: str | None = Header(default=None),
+    days: int = Query(default=7, ge=1, le=30),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+) -> dict[str, Any]:
+    get_current_admin_user(authorization)
+
+    query: dict[str, Any] = {}
+    created_at_range = build_created_at_date_range_filter(date_from, date_to)
+    if created_at_range:
+        query["created_at"] = created_at_range
+
+    try:
+        documents = list(get_sehri_requests_collection().find(query).sort("created_at", -1))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    return compute_sehri_analytics(documents, days=days)
 
 
 @app.post("/chat")
