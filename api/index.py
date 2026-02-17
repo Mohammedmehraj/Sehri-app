@@ -187,7 +187,21 @@ def is_within_sehri_booking_window(now_utc: datetime) -> bool:
 
 
 def normalize_email(value: str) -> str:
-    return value.strip().lower()
+    cleaned = str(value or "").strip().lower()
+    # Accept values like "admin@example.com" that may come from quoted env vars.
+    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {'"', "'"}:
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
+def is_truthy_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return False
 
 
 def get_auth_db_name() -> str:
@@ -195,11 +209,19 @@ def get_auth_db_name() -> str:
 
 
 def get_admin_email_set() -> set[str]:
-    admin_emails_raw = get_env("ADMIN_EMAILS", "") or ""
+    admin_emails_raw = ",".join(
+        value
+        for value in (
+            get_env("ADMIN_EMAILS", "") or "",
+            get_env("ADMIN_EMAIL", "") or "",
+        )
+        if value
+    )
+    admin_email_tokens = re.split(r"[,\n;]+", admin_emails_raw)
     return {
         normalize_email(email)
-        for email in admin_emails_raw.split(",")
-        if email.strip()
+        for email in admin_email_tokens
+        if normalize_email(email)
     }
 
 
@@ -464,11 +486,11 @@ def extract_user_payload(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_admin_user_document(document: dict[str, Any]) -> bool:
-    if document.get("is_admin") is True:
+    if is_truthy_flag(document.get("is_admin")) or is_truthy_flag(document.get("isAdmin")):
         return True
 
     role = str(document.get("role", "")).strip().lower()
-    if role in {"admin", "superadmin"}:
+    if role in {"admin", "superadmin", "administrator"}:
         return True
 
     email = normalize_email(str(document.get("email", "")))
