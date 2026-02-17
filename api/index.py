@@ -214,6 +214,8 @@ def get_admin_email_set() -> set[str]:
         for value in (
             get_env("ADMIN_EMAILS", "") or "",
             get_env("ADMIN_EMAIL", "") or "",
+            get_env("ADMIN_EMAILS1", "") or "",
+            get_env("ADMIN_EMAILS2", "") or "",
         )
         if value
     )
@@ -225,15 +227,25 @@ def get_admin_email_set() -> set[str]:
     }
 
 
+def get_mongodb_uri() -> str | None:
+    # Allow common env var variants so production env naming mismatches do not break API.
+    return (
+        get_env("MONGODB_URI")
+        or get_env("MONGO_URI")
+        or get_env("MONGO_URL")
+        or get_env("DATABASE_URL")
+    )
+
+
 def get_mongo_client() -> MongoClient:
     global _mongo_client
 
     if _mongo_client is not None:
         return _mongo_client
 
-    mongodb_uri = get_env("MONGODB_URI")
+    mongodb_uri = get_mongodb_uri()
     if not mongodb_uri:
-        raise RuntimeError("MONGODB_URI is not set.")
+        raise RuntimeError("MongoDB URI is not set (expected MONGODB_URI, MONGO_URI, MONGO_URL, or DATABASE_URL).")
 
     _mongo_client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=7000)
     return _mongo_client
@@ -1608,7 +1620,25 @@ def health() -> dict:
         database_status = "connected"
     except Exception:
         database_status = "not_connected"
-    return {"status": "ok", "database": database_status}
+
+    return {
+        "status": "ok",
+        "database": database_status,
+        "runtime": {
+            "vercel": is_truthy_flag(get_env("VERCEL")),
+            "vercelEnv": get_env("VERCEL_ENV", "local") or "local",
+            "region": get_env("VERCEL_REGION", "unknown") or "unknown",
+        },
+        "config": {
+            "hasMongodbUri": bool(get_mongodb_uri()),
+            "hasAuthSecretKey": bool(get_env("AUTH_SECRET_KEY")),
+            "hasAdminEmails": bool(get_admin_email_set()),
+            "hasOpenRouterKey": bool(get_env("OPENROUTER_API_KEY") or get_env("OPENAI_API_KEY")),
+            "authDbName": get_auth_db_name(),
+            "providersDbName": get_env("MONGODB_DB_NAME") or get_auth_db_name(),
+            "providersCollection": get_env("MONGODB_PROVIDERS_COLLECTION", "providers") or "providers",
+        },
+    }
 
 
 @app.on_event("shutdown")

@@ -110,7 +110,8 @@ npm start
 	- `MONGODB_USERS_COLLECTION` (optional): defaults to `users`
 	- `MONGODB_SESSIONS_COLLECTION` (optional): defaults to `auth_sessions`
 	- `MONGODB_SEHRI_REQUESTS_COLLECTION` (optional): defaults to `sehri_requests`
-	- `ADMIN_EMAILS` (required for admin approvals): comma-separated admin emails (for example: `owner@example.com,ops@example.com`)
+	- `ADMIN_EMAILS` (optional for admin approvals): comma-separated admin emails (for example: `owner@example.com,ops@example.com`)
+	- `ADMIN_EMAILS1`, `ADMIN_EMAILS2` (optional): set admin emails as separate variables
 	- `AUTH_SECRET_KEY` (required for auth): random secret used to sign session token hashes
 	- `AUTH_SESSION_DAYS` (optional): defaults to `7`
 3. Deploy. This project serves frontend and Python API from `api/index.py` in one Vercel project.
@@ -120,6 +121,7 @@ npm start
 - `GET /api/hello` -> `{ "message": "Hello World" }`
 - `POST /api/chat` -> OpenRouter-backed chat response `{ "response": "..." }`
 - `GET /api/health` -> `{ "status": "ok" }`
+  - Includes `database`, `runtime`, and non-secret `config` flags to help diagnose Vercel env setup.
 - `GET /api/providers` -> paginated providers from MongoDB
   - Query params: `page` (default `1`), `page_size` (default `12`), `location` (optional)
 - `GET /api/providers/all` -> all raw provider documents from MongoDB
