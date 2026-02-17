@@ -2367,6 +2367,19 @@ function App() {
                   <p className={`text-lg sm:text-xl font-bold mb-2 ${headerTextClass}`}>Contact: Sadiq Rahmathulla</p>
                   <p className={`text-lg sm:text-xl font-bold ${headerTextClass}`}>Phone: 8951669581</p>
                 </div>
+                <div className={`mt-3 rounded-xl border border-white/20 bg-gradient-to-r ${headerCardGradientClass} p-4`}>
+                  <p className={`text-sm sm:text-base font-semibold ${headerSubTextClass}`}>
+                    To find more sehri options please visit{' '}
+                    <a
+                      href="https://bangaloresehri.in/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`underline font-bold ${headerTextClass} opacity-95 hover:opacity-80`}
+                    >
+                      https://bangaloresehri.in/
+                    </a>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
