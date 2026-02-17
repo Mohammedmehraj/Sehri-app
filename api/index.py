@@ -163,6 +163,21 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+BANGALORE_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
+
+
+def get_bangalore_day_bounds_utc(now_utc: datetime) -> tuple[datetime, datetime, str]:
+    local_now = now_utc.astimezone(BANGALORE_TIMEZONE)
+    local_day = local_now.date()
+    start_local = datetime.combine(local_day, datetime.min.time(), tzinfo=BANGALORE_TIMEZONE)
+    end_local = start_local + timedelta(days=1)
+    return (
+        start_local.astimezone(timezone.utc),
+        end_local.astimezone(timezone.utc),
+        local_day.isoformat(),
+    )
+
+
 def normalize_email(value: str) -> str:
     return value.strip().lower()
 
@@ -228,6 +243,8 @@ def get_sehri_requests_collection() -> Collection:
     collection.create_index("created_at")
     collection.create_index("status")
     collection.create_index("requested_by_user_id")
+    collection.create_index("mobile_number_digits")
+    collection.create_index("request_date_local")
     return collection
 
 
@@ -558,6 +575,35 @@ def normalize_sehri_request(document: dict[str, Any]) -> dict[str, Any]:
         "createdAt": serialize_mongo_value(document.get("created_at")),
         "updatedAt": serialize_mongo_value(document.get("updated_at")),
     }
+
+
+def has_existing_sehri_request_for_mobile_on_day(
+    collection: Collection,
+    mobile_digits: str,
+    day_start_utc: datetime,
+    day_end_utc: datetime,
+) -> bool:
+    if not mobile_digits:
+        return False
+
+    cursor = collection.find(
+        {
+            "created_at": {
+                "$gte": day_start_utc,
+                "$lt": day_end_utc,
+            }
+        },
+        {"mobile_number": 1, "mobile_number_digits": 1},
+    )
+    for document in cursor:
+        stored_mobile_value = str(
+            document.get("mobile_number_digits")
+            or document.get("mobile_number")
+            or ""
+        )
+        if re.sub(r"\D", "", stored_mobile_value) == mobile_digits:
+            return True
+    return False
 
 
 def get_iso_day_label(value: Any) -> str:
@@ -1449,8 +1495,8 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
 
     if len(full_name) < 2:
         raise HTTPException(status_code=422, detail="Full name must be at least 2 characters.")
-    if gender not in {"Male", "Female", "Other"}:
-        raise HTTPException(status_code=422, detail="Gender is required.")
+    if gender not in {"Male", "Female"}:
+        raise HTTPException(status_code=422, detail="Gender must be Male or Female.")
     if len(normalized_mobile_digits) < 10:
         raise HTTPException(status_code=422, detail="Mobile number is invalid.")
     if len(location) < 2:
@@ -1464,14 +1510,39 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
         raise HTTPException(status_code=422, detail="No. of Boxes must be at least 1.")
 
     now = utc_now()
+    day_start_utc, day_end_utc, local_day_label = get_bangalore_day_bounds_utc(now)
+
+    try:
+        sehri_requests_collection = get_sehri_requests_collection()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        already_booked_today = has_existing_sehri_request_for_mobile_on_day(
+            collection=sehri_requests_collection,
+            mobile_digits=normalized_mobile_digits,
+            day_start_utc=day_start_utc,
+            day_end_utc=day_end_utc,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    if already_booked_today:
+        raise HTTPException(
+            status_code=409,
+            detail="This mobile number has already booked Sehri for today. Please try again tomorrow.",
+        )
+
     document = {
         "full_name": full_name,
         "gender": gender,
         "mobile_number": mobile_number,
+        "mobile_number_digits": normalized_mobile_digits,
         "location": location,
         "box_count": box_count,
         # Keep the legacy key in sync so older analytics/clients still work.
         "sehri_count": box_count,
+        "request_date_local": local_day_label,
         "submission_source": submission_source,
         "status": "pending",
         "requested_by_user_id": requested_by_user_id,
@@ -1482,7 +1553,7 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
     }
 
     try:
-        inserted = get_sehri_requests_collection().insert_one(document)
+        inserted = sehri_requests_collection.insert_one(document)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except PyMongoError as exc:
