@@ -317,23 +317,6 @@ function formatTimeShift(previousValue, currentValue) {
   return `${delta > 0 ? '+' : '-'}${Math.abs(delta)} min`;
 }
 
-const SEHRI_REQUEST_LOCATION_OPTIONS = [
-  'Shivajinagar',
-  'Vasanth Nagar',
-  'Cunningham Road',
-  'Queens Road',
-  'Infantry Road',
-  'Benson Town',
-  'Frazer Town',
-  'HBR Layout',
-  'Chinappa Garden',
-  'Marappa Garden',
-  'Commercial Street',
-  'Kamraj Road',
-  'Nandi Durga Road',
-  'SK Garden',
-];
-
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
   {
@@ -434,21 +417,6 @@ const mockProviders = [
     foodType: "Arabic, Shawarma",
     pricing: "Paid",
     image: "ðŸ¥™"
-  },
-  {
-    id: 10,
-    name: "Bangaluru East Volunteer Delivery",
-    type: "Volunteer",
-    section: "Delivery",
-    zone: "Bangaluru East",
-    contact: "Sadiq Rahmathulla",
-    phone: "8951669581",
-    location: "Bangaluru East",
-    address: "Shivajinagar, Vasanth Nagar, Cunningham Road, Queens Road, Infantry Road, Benson Town, Chinappa Garden, Marappa Garden, Commercial Street, Kamraj Road, Nandi Durga Road, SK Garden",
-    opens: "2:30 AM",
-    foodType: "Sehri box delivery service",
-    pricing: "Free",
-    image: "??"
   }
 ];
 
@@ -547,8 +515,14 @@ function App() {
     fullName: '',
     gender: '',
     mobileNumber: '',
-    location: '',
-    boxCount: '1'
+    email: '',
+    alternativeNumber: '',
+    address: '',
+    landmark: '',
+    pincode: '',
+    city: 'Bangalore',
+    sehriCount: '1',
+    locationType: ''
   });
   const [sehriRequestSubmitting, setSehriRequestSubmitting] = useState(false);
   const [feedbackData, setFeedbackData] = useState({
@@ -876,20 +850,14 @@ function App() {
     if (activeSection !== 'profile' || authUser) {
       return;
     }
-    if (authToken && !authUser) {
-      return;
-    }
     setAuthError('Please login to access your profile.');
     setIsRegisterMode(false);
     setShowAuthModal(true);
     navigateToSection(DEFAULT_SECTION);
-  }, [activeSection, authToken, authUser, navigateToSection]);
+  }, [activeSection, authUser, navigateToSection]);
 
   useEffect(() => {
     if (activeSection !== 'admin') {
-      return;
-    }
-    if (authToken && !authUser) {
       return;
     }
 
@@ -905,7 +873,7 @@ function App() {
       alert('Admin access is required to open this page.');
       navigateToSection(DEFAULT_SECTION);
     }
-  }, [activeSection, authToken, authUser, navigateToSection]);
+  }, [activeSection, authUser, navigateToSection]);
 
   // Load providers from backend API
   useEffect(() => {
@@ -1052,7 +1020,6 @@ function App() {
       }
     };
 
-    SEHRI_REQUEST_LOCATION_OPTIONS.forEach((option) => registerLocation(option));
     mockProviders.forEach((provider) => registerLocation(provider.location));
     providers.forEach((provider) => registerLocation(provider.location));
     registerLocation(searchLocation);
@@ -1705,11 +1672,8 @@ function App() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          fullName: sehriRequestData.fullName,
-          mobileNumber: sehriRequestData.mobileNumber,
-          gender: sehriRequestData.gender,
-          location: sehriRequestData.location,
-          boxCount: parseInt(sehriRequestData.boxCount, 10) || 1,
+          ...sehriRequestData,
+          sehriCount: parseInt(sehriRequestData.sehriCount, 10) || 1,
         }),
       });
 
@@ -1724,8 +1688,14 @@ function App() {
         fullName: '',
         gender: '',
         mobileNumber: '',
-        location: '',
-        boxCount: '1'
+        email: '',
+        alternativeNumber: '',
+        address: '',
+        landmark: '',
+        pincode: '',
+        city: 'Bangalore',
+        sehriCount: '1',
+        locationType: ''
       });
       refreshCaptcha('sehri');
     } catch (error) {
@@ -1893,7 +1863,7 @@ function App() {
     ? 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/30 text-white bg-white/10 hover:bg-white/20 transition-colors'
     : 'h-7 min-w-7 px-2 rounded-md text-xs font-semibold border border-white/40 text-white bg-white/15 hover:bg-white/25 transition-colors';
   const isAdminUser = Boolean(authUser?.isAdmin);
-  const shouldShowNavbar = SHOW_NAVBAR || isAdminUser || activeSection === 'admin';
+  const shouldShowNavbar = SHOW_NAVBAR || isAdminUser;
   const authDisplayName = (authUser?.name || '').trim() || 'User';
   const authInitials = authDisplayName
     .split(/\s+/)
@@ -2235,6 +2205,9 @@ function App() {
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
               <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-5 sm:p-6`}>
                 <h2 className="text-2xl sm:text-3xl font-bold mb-2">Need Sehri? Submit a Request</h2>
+                <p className={`${headerSubTextClass} text-sm sm:text-base`}>
+                  Share your location and requirement. We will connect you with nearby providers.
+                </p>
               </div>
 
               <form onSubmit={handleSehriRequestSubmit} className="p-4 sm:p-6 space-y-5">
@@ -2255,24 +2228,6 @@ function App() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="sehriMobileNumber" className="block text-gray-700 font-semibold mb-2">
-                      Phone Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      id="sehriMobileNumber"
-                      name="mobileNumber"
-                      value={sehriRequestData.mobileNumber}
-                      onChange={handleSehriRequestChange}
-                      required
-                      placeholder="+91 XXXXX XXXXX"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
                     <label htmlFor="sehriGender" className="block text-gray-700 font-semibold mb-2">
                       Gender <span className="text-red-500">*</span>
                     </label>
@@ -2290,43 +2245,159 @@ function App() {
                       <option value="Other">Other</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="sehriLocation" className="block text-gray-700 font-semibold mb-2">
-                      Location <span className="text-red-500">*</span>
+                    <label htmlFor="sehriMobileNumber" className="block text-gray-700 font-semibold mb-2">
+                      Mobile Number <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      id="sehriLocation"
-                      name="location"
-                      value={sehriRequestData.location}
+                    <input
+                      type="tel"
+                      id="sehriMobileNumber"
+                      name="mobileNumber"
+                      value={sehriRequestData.mobileNumber}
                       onChange={handleSehriRequestChange}
                       required
+                      placeholder="+91 XXXXX XXXXX"
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
-                    >
-                      <option value="">Select location</option>
-                      {SEHRI_REQUEST_LOCATION_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="sehriEmail" className="block text-gray-700 font-semibold mb-2">
+                      Email (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      id="sehriEmail"
+                      name="email"
+                      value={sehriRequestData.email}
+                      onChange={handleSehriRequestChange}
+                      placeholder="your@email.com"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="sehriAlternativeNumber" className="block text-gray-700 font-semibold mb-2">
+                      Alternative Number (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      id="sehriAlternativeNumber"
+                      name="alternativeNumber"
+                      value={sehriRequestData.alternativeNumber}
+                      onChange={handleSehriRequestChange}
+                      placeholder="+91 XXXXX XXXXX"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="sehriPincode" className="block text-gray-700 font-semibold mb-2">
+                      Pincode <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      id="sehriPincode"
+                      name="pincode"
+                      value={sehriRequestData.pincode}
+                      onChange={handleSehriRequestChange}
+                      required
+                      placeholder="560001"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="sehriBoxCount" className="block text-gray-700 font-semibold mb-2">
-                    No. of Boxes <span className="text-red-500">*</span>
+                  <label htmlFor="sehriAddress" className="block text-gray-700 font-semibold mb-2">
+                    Address <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    id="sehriBoxCount"
-                    name="boxCount"
-                    min="1"
-                    value={sehriRequestData.boxCount}
+                    type="text"
+                    id="sehriAddress"
+                    name="address"
+                    value={sehriRequestData.address}
                     onChange={handleSehriRequestChange}
                     required
-                    placeholder="1"
+                    placeholder="House No, Street, Building..."
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="sehriLandmark" className="block text-gray-700 font-semibold mb-2">
+                      Landmark <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="sehriLandmark"
+                      name="landmark"
+                      value={sehriRequestData.landmark}
+                      onChange={handleSehriRequestChange}
+                      required
+                      placeholder="Near Metro Station, Opposite..."
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="sehriCity" className="block text-gray-700 font-semibold mb-2">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      id="sehriCity"
+                      name="city"
+                      value={sehriRequestData.city}
+                      onChange={handleSehriRequestChange}
+                      placeholder="Bangalore"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="sehriCount" className="block text-gray-700 font-semibold mb-2">
+                      No. of Sehris Required <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      id="sehriCount"
+                      name="sehriCount"
+                      min="1"
+                      value={sehriRequestData.sehriCount}
+                      onChange={handleSehriRequestChange}
+                      required
+                      placeholder="1"
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="sehriLocationType" className="block text-gray-700 font-semibold mb-2">
+                      Location Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="sehriLocationType"
+                      name="locationType"
+                      value={sehriRequestData.locationType}
+                      onChange={handleSehriRequestChange}
+                      required
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                    >
+                      <option value="">Select</option>
+                      <option value="Home">Home</option>
+                      <option value="PG/Hostel">PG/Hostel</option>
+                      <option value="Street/Outdoor">Street/Outdoor</option>
+                      <option value="Masjid Area">Masjid Area</option>
+                      <option value="Workplace">Workplace</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
                 </div>
 
                 {renderCaptchaField('sehri')}
@@ -2341,13 +2412,6 @@ function App() {
                   </button>
                 </div>
               </form>
-
-              <div className="border-t border-gray-100 px-4 sm:px-6 pb-5 sm:pb-6 pt-5">
-                <div className={`rounded-xl border border-white/20 bg-gradient-to-r ${headerCardGradientClass} p-4`}>
-                  <p className={`text-lg sm:text-xl font-bold mb-2 ${headerTextClass}`}>Contact: Sadiq Rahmathulla</p>
-                  <p className={`text-lg sm:text-xl font-bold ${headerTextClass}`}>Phone: 8951669581</p>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -2477,20 +2541,13 @@ function App() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className={`inline-block text-xs font-semibold px-2 py-1 rounded ${
-                          provider.type === 'Masjid' ? 'bg-purple-100 text-purple-700' :
-                          provider.type === 'Volunteer' ? 'bg-green-100 text-green-700' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
-                          {provider.type}
-                        </span>
-                        {provider.section && (
-                          <span className="inline-block text-xs font-semibold px-2 py-1 rounded bg-amber-100 text-amber-700">
-                            {provider.section}
-                          </span>
-                        )}
-                      </div>
+                      <span className={`inline-block text-xs font-semibold px-2 py-1 rounded mt-1 ${
+                        provider.type === 'Masjid' ? 'bg-purple-100 text-purple-700' :
+                        provider.type === 'Volunteer' ? 'bg-green-100 text-green-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {provider.type}
+                      </span>
                     </div>
 
                     <div className="space-y-2 mb-4">
@@ -2533,21 +2590,6 @@ function App() {
                         </svg>
                         <span>Opens at <span className="font-semibold text-purple-600">{provider.opens}</span></span>
                       </div>
-                      {provider.zone && (
-                        <p className="text-sm text-gray-600">
-                          <span className="font-semibold text-gray-700">Zone:</span> {provider.zone}
-                        </p>
-                      )}
-                      {provider.contact && (
-                        <p className="text-sm text-gray-600">
-                          <span className="font-semibold text-gray-700">Contact:</span> {provider.contact}
-                        </p>
-                      )}
-                      {provider.phone && (
-                        <p className="text-sm text-gray-600">
-                          <span className="font-semibold text-gray-700">Phone:</span> {provider.phone}
-                        </p>
-                      )}
                     </div>
 
                     <div className="border-t pt-3">
@@ -2927,41 +2969,41 @@ function App() {
                         <p className="text-2xl font-bold text-blue-900">{adminSehriAnalytics?.summary?.totalRequests || 0}</p>
                       </div>
                       <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                        <p className="text-xs text-amber-700 font-semibold uppercase">Today</p>
-                        <p className="text-2xl font-bold text-amber-900">{adminSehriAnalytics?.summary?.todayRequests || 0}</p>
+                        <p className="text-xs text-amber-700 font-semibold uppercase">Pending</p>
+                        <p className="text-2xl font-bold text-amber-900">{adminSehriAnalytics?.summary?.pendingRequests || 0}</p>
                       </div>
                       <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                        <p className="text-xs text-emerald-700 font-semibold uppercase">Boxes Requested</p>
-                        <p className="text-2xl font-bold text-emerald-900">{adminSehriAnalytics?.summary?.totalBoxesRequested || 0}</p>
+                        <p className="text-xs text-emerald-700 font-semibold uppercase">Today</p>
+                        <p className="text-2xl font-bold text-emerald-900">{adminSehriAnalytics?.summary?.todayRequests || 0}</p>
                       </div>
                       <div className="rounded-xl border border-purple-100 bg-purple-50 p-3">
-                        <p className="text-xs text-purple-700 font-semibold uppercase">Avg Boxes/Request</p>
-                        <p className="text-2xl font-bold text-purple-900">{adminSehriAnalytics?.summary?.averageBoxesPerRequest || 0}</p>
+                        <p className="text-xs text-purple-700 font-semibold uppercase">Meals Requested</p>
+                        <p className="text-2xl font-bold text-purple-900">{adminSehriAnalytics?.summary?.totalMealsRequested || 0}</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       <div className="rounded-xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Top Locations</p>
-                        {(adminSehriAnalytics?.locationBreakdown || adminSehriAnalytics?.cityBreakdown || []).slice(0, 5).map((item) => (
-                          <p key={`location-${item.label}`} className="text-sm text-gray-700 flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Top Cities</p>
+                        {(adminSehriAnalytics?.cityBreakdown || []).slice(0, 5).map((item) => (
+                          <p key={`city-${item.label}`} className="text-sm text-gray-700 flex items-center justify-between">
                             <span>{item.label}</span>
                             <span className="font-semibold">{item.count}</span>
                           </p>
                         ))}
-                        {(adminSehriAnalytics?.locationBreakdown || adminSehriAnalytics?.cityBreakdown || []).length === 0 && (
+                        {(adminSehriAnalytics?.cityBreakdown || []).length === 0 && (
                           <p className="text-sm text-gray-500">No data yet.</p>
                         )}
                       </div>
                       <div className="rounded-xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Gender</p>
-                        {(adminSehriAnalytics?.genderBreakdown || []).slice(0, 5).map((item) => (
-                          <p key={`gender-${item.label}`} className="text-sm text-gray-700 flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Location Types</p>
+                        {(adminSehriAnalytics?.locationTypeBreakdown || []).slice(0, 5).map((item) => (
+                          <p key={`type-${item.label}`} className="text-sm text-gray-700 flex items-center justify-between">
                             <span>{item.label}</span>
                             <span className="font-semibold">{item.count}</span>
                           </p>
                         ))}
-                        {(adminSehriAnalytics?.genderBreakdown || []).length === 0 && (
+                        {(adminSehriAnalytics?.locationTypeBreakdown || []).length === 0 && (
                           <p className="text-sm text-gray-500">No data yet.</p>
                         )}
                       </div>
@@ -3003,20 +3045,26 @@ function App() {
                         <div className="flex flex-col gap-3">
                           <div>
                             <h4 className="text-lg font-bold text-gray-800">{request.fullName || 'Unnamed Request'}</h4>
-                            <p className="text-sm text-gray-600">{request.location || '-'}</p>
+                            <p className="text-sm text-gray-600">
+                              {request.city || 'Unknown City'} · {request.locationType || 'Unknown Location Type'}
+                            </p>
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm">
                           <p><span className="font-semibold text-gray-700">Mobile:</span> <span className="text-gray-600">{request.mobileNumber || '-'}</span></p>
+                          <p><span className="font-semibold text-gray-700">Alternative:</span> <span className="text-gray-600">{request.alternativeNumber || '-'}</span></p>
+                          <p><span className="font-semibold text-gray-700">Email:</span> <span className="text-gray-600">{request.email || '-'}</span></p>
                           <p><span className="font-semibold text-gray-700">Gender:</span> <span className="text-gray-600">{request.gender || '-'}</span></p>
-                          <p><span className="font-semibold text-gray-700">No. of Boxes:</span> <span className="text-gray-600">{request.boxCount || request.sehriCount || 0}</span></p>
-                          <p className="sm:col-span-2 lg:col-span-3"><span className="font-semibold text-gray-700">Location:</span> <span className="text-gray-600">{request.location || '-'}</span></p>
+                          <p><span className="font-semibold text-gray-700">Pincode:</span> <span className="text-gray-600">{request.pincode || '-'}</span></p>
+                          <p><span className="font-semibold text-gray-700">Sehri Count:</span> <span className="text-gray-600">{request.sehriCount || 0}</span></p>
+                          <p className="sm:col-span-2 lg:col-span-3"><span className="font-semibold text-gray-700">Address:</span> <span className="text-gray-600">{request.address || '-'}</span></p>
+                          <p className="sm:col-span-2 lg:col-span-3"><span className="font-semibold text-gray-700">Landmark:</span> <span className="text-gray-600">{request.landmark || '-'}</span></p>
                         </div>
 
                         <p className="mt-3 text-xs text-gray-500">
-                          Requested by: {request.requestedByName || request.requestedByEmail || 'Guest'} |
-                          {' '}Source: {request.submissionSource || 'guest'} |
+                          Requested by: {request.requestedByName || request.requestedByEmail || 'Guest'} ·
+                          {' '}Source: {request.submissionSource || 'guest'} ·
                           {' '}Created: {formatAdminDateTime(request.createdAt)}
                         </p>
                       </article>

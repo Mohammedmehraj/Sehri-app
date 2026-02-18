@@ -58,12 +58,14 @@ class SehriRequestCreate(BaseModel):
     fullName: str
     gender: str
     mobileNumber: str
-    location: str = ""
-    boxCount: int | None = None
-    # Backward-compatible payload support.
-    sehriCount: int | None = None
-    address: str = ""
-    city: str = ""
+    email: str = ""
+    alternativeNumber: str = ""
+    address: str
+    landmark: str
+    pincode: str
+    city: str = "Bangalore"
+    sehriCount: int
+    locationType: str
 
 
 class ProviderSubmissionCreate(BaseModel):
@@ -564,26 +566,19 @@ def normalize_provider_submission(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_sehri_request(document: dict[str, Any]) -> dict[str, Any]:
-    location = (
-        str(document.get("location", "")).strip()
-        or str(document.get("address", "")).strip()
-        or str(document.get("city", "")).strip()
-    )
-    box_count_raw = document.get("box_count", document.get("sehri_count", 0))
-    try:
-        box_count = int(box_count_raw)
-    except Exception:
-        box_count = 0
-
     return {
         "id": str(document.get("_id", "")),
         "fullName": str(document.get("full_name", "")).strip(),
         "gender": str(document.get("gender", "")).strip(),
         "mobileNumber": str(document.get("mobile_number", "")).strip(),
-        "location": location,
-        "boxCount": box_count,
-        # Keep existing key for frontend/backward compatibility.
-        "sehriCount": box_count,
+        "email": str(document.get("email", "")).strip().lower(),
+        "alternativeNumber": str(document.get("alternative_number", "")).strip(),
+        "address": str(document.get("address", "")).strip(),
+        "landmark": str(document.get("landmark", "")).strip(),
+        "pincode": str(document.get("pincode", "")).strip(),
+        "city": str(document.get("city", "")).strip(),
+        "sehriCount": int(document.get("sehri_count", 0) or 0),
+        "locationType": str(document.get("location_type", "")).strip(),
         "submissionSource": str(document.get("submission_source", "guest")).strip().lower() or "guest",
         "status": str(document.get("status", "pending")).strip().lower() or "pending",
         "requestedByName": str(document.get("requested_by_name", "")).strip(),
@@ -638,10 +633,11 @@ def compute_sehri_analytics(documents: list[dict[str, Any]], days: int = 7) -> d
     safe_days = max(1, min(days, 30))
 
     status_counts: dict[str, int] = {}
-    location_counts: dict[str, int] = {}
+    city_counts: dict[str, int] = {}
+    location_type_counts: dict[str, int] = {}
     gender_counts: dict[str, int] = {}
 
-    total_boxes_requested = 0
+    total_meals_requested = 0
     today_requests = 0
     authenticated_requests = 0
     guest_requests = 0
@@ -650,24 +646,22 @@ def compute_sehri_analytics(documents: list[dict[str, Any]], days: int = 7) -> d
         status = str(document.get("status", "pending")).strip().lower() or "pending"
         status_counts[status] = status_counts.get(status, 0) + 1
 
-        location = (
-            str(document.get("location", "")).strip()
-            or str(document.get("address", "")).strip()
-            or str(document.get("city", "")).strip()
-            or "Unknown"
-        )
-        location_counts[location] = location_counts.get(location, 0) + 1
+        city = str(document.get("city", "")).strip() or "Unknown"
+        city_counts[city] = city_counts.get(city, 0) + 1
+
+        location_type = str(document.get("location_type", "")).strip() or "Unknown"
+        location_type_counts[location_type] = location_type_counts.get(location_type, 0) + 1
 
         gender = str(document.get("gender", "")).strip() or "Unknown"
         gender_counts[gender] = gender_counts.get(gender, 0) + 1
 
-        box_count_raw = document.get("box_count", document.get("sehri_count", 0))
+        meal_count_raw = document.get("sehri_count", 0)
         try:
-            box_count = int(box_count_raw)
+            meal_count = int(meal_count_raw)
         except Exception:
-            box_count = 0
-        if box_count > 0:
-            total_boxes_requested += box_count
+            meal_count = 0
+        if meal_count > 0:
+            total_meals_requested += meal_count
 
         source = str(document.get("submission_source", "guest")).strip().lower()
         if source == "authenticated":
@@ -703,19 +697,14 @@ def compute_sehri_analytics(documents: list[dict[str, Any]], days: int = 7) -> d
             "approvedRequests": status_counts.get("approved", 0),
             "rejectedRequests": status_counts.get("rejected", 0),
             "todayRequests": today_requests,
-            "totalBoxesRequested": total_boxes_requested,
-            "averageBoxesPerRequest": round((total_boxes_requested / len(documents)), 2) if documents else 0,
-            # Backward-compatible analytics keys.
-            "totalMealsRequested": total_boxes_requested,
-            "averageMealsPerRequest": round((total_boxes_requested / len(documents)), 2) if documents else 0,
+            "totalMealsRequested": total_meals_requested,
+            "averageMealsPerRequest": round((total_meals_requested / len(documents)), 2) if documents else 0,
             "guestRequests": guest_requests,
             "authenticatedRequests": authenticated_requests,
         },
         "statusBreakdown": to_sorted_top_counts(status_counts, limit=10),
-        "locationBreakdown": to_sorted_top_counts(location_counts, limit=10),
-        # Backward-compatible analytics keys for existing frontend clients.
-        "cityBreakdown": to_sorted_top_counts(location_counts, limit=10),
-        "locationTypeBreakdown": [],
+        "cityBreakdown": to_sorted_top_counts(city_counts, limit=10),
+        "locationTypeBreakdown": to_sorted_top_counts(location_type_counts, limit=10),
         "genderBreakdown": to_sorted_top_counts(gender_counts, limit=10),
         "lastDaysTrend": [
             {"date": label, "count": count}
@@ -1187,10 +1176,16 @@ def export_sehri_requests_for_admin(
         [
             "Request ID",
             "Full Name",
-            "Mobile Number",
             "Gender",
-            "Location",
-            "No. of Boxes",
+            "Mobile Number",
+            "Email",
+            "Alternative Number",
+            "Address",
+            "Landmark",
+            "Pincode",
+            "City",
+            "Sehri Count",
+            "Location Type",
             "Submission Source",
             "Requested By Name",
             "Requested By Email",
@@ -1205,10 +1200,16 @@ def export_sehri_requests_for_admin(
             [
                 normalized.get("id", ""),
                 normalized.get("fullName", ""),
-                normalized.get("mobileNumber", ""),
                 normalized.get("gender", ""),
-                normalized.get("location", ""),
-                normalized.get("boxCount", normalized.get("sehriCount", 0)),
+                normalized.get("mobileNumber", ""),
+                normalized.get("email", ""),
+                normalized.get("alternativeNumber", ""),
+                normalized.get("address", ""),
+                normalized.get("landmark", ""),
+                normalized.get("pincode", ""),
+                normalized.get("city", ""),
+                normalized.get("sehriCount", 0),
+                normalized.get("locationType", ""),
                 normalized.get("submissionSource", ""),
                 normalized.get("requestedByName", ""),
                 normalized.get("requestedByEmail", ""),
@@ -1476,10 +1477,16 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
     full_name = payload.fullName.strip()
     gender = payload.gender.strip()
     mobile_number = payload.mobileNumber.strip()
-    location = payload.location.strip() or payload.address.strip() or payload.city.strip()
-    box_count_value = payload.boxCount if payload.boxCount is not None else payload.sehriCount
+    email = payload.email.strip().lower()
+    alternative_number = payload.alternativeNumber.strip()
+    address = payload.address.strip()
+    landmark = payload.landmark.strip()
+    pincode = payload.pincode.strip()
+    city = payload.city.strip()
+    location_type = payload.locationType.strip()
 
     normalized_mobile_digits = re.sub(r"\D", "", mobile_number)
+    normalized_alt_digits = re.sub(r"\D", "", alternative_number)
 
     if len(full_name) < 2:
         raise HTTPException(status_code=422, detail="Full name must be at least 2 characters.")
@@ -1487,25 +1494,36 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
         raise HTTPException(status_code=422, detail="Gender is required.")
     if len(normalized_mobile_digits) < 10:
         raise HTTPException(status_code=422, detail="Mobile number is invalid.")
-    if len(location) < 2:
-        raise HTTPException(status_code=422, detail="Location is required.")
-
-    try:
-        box_count = int(box_count_value or 0)
-    except Exception:
-        box_count = 0
-    if box_count < 1:
-        raise HTTPException(status_code=422, detail="No. of Boxes must be at least 1.")
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Email format is invalid.")
+    if alternative_number and len(normalized_alt_digits) < 10:
+        raise HTTPException(status_code=422, detail="Alternative number is invalid.")
+    if len(address) < 3:
+        raise HTTPException(status_code=422, detail="Address is required.")
+    if len(landmark) < 2:
+        raise HTTPException(status_code=422, detail="Landmark is required.")
+    if not re.match(r"^\d{6}$", pincode):
+        raise HTTPException(status_code=422, detail="Pincode must be 6 digits.")
+    if len(city) < 2:
+        raise HTTPException(status_code=422, detail="City is required.")
+    if payload.sehriCount < 1:
+        raise HTTPException(status_code=422, detail="No. of Sehris Required must be at least 1.")
+    if location_type not in {"Home", "PG/Hostel", "Street/Outdoor", "Masjid Area", "Workplace", "Other"}:
+        raise HTTPException(status_code=422, detail="Location Type is required.")
 
     now = utc_now()
     document = {
         "full_name": full_name,
         "gender": gender,
         "mobile_number": mobile_number,
-        "location": location,
-        "box_count": box_count,
-        # Keep the legacy key in sync so older analytics/clients still work.
-        "sehri_count": box_count,
+        "email": email,
+        "alternative_number": alternative_number,
+        "address": address,
+        "landmark": landmark,
+        "pincode": pincode,
+        "city": city,
+        "sehri_count": payload.sehriCount,
+        "location_type": location_type,
         "submission_source": submission_source,
         "status": "pending",
         "requested_by_user_id": requested_by_user_id,
