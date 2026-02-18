@@ -324,6 +324,8 @@ const SEHRI_REQUEST_LOCATION_OPTIONS = [
   'Queens Road',
   'Infantry Road',
   'Benson Town',
+  'Frazer Town',
+  'HBR Layout',
   'Chinappa Garden',
   'Marappa Garden',
   'Commercial Street',
@@ -1052,6 +1054,7 @@ function App() {
       }
     };
 
+    SEHRI_REQUEST_LOCATION_OPTIONS.forEach((option) => registerLocation(option));
     mockProviders.forEach((provider) => registerLocation(provider.location));
     providers.forEach((provider) => registerLocation(provider.location));
     registerLocation(searchLocation);

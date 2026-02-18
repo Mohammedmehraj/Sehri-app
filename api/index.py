@@ -165,7 +165,7 @@ def utc_now() -> datetime:
 
 BANGALORE_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
 SEHRI_BOOKING_START_SECONDS = (6 * 60 * 60)   # 06:00 AM
-SEHRI_BOOKING_END_SECONDS = (17 * 60 * 60)    # 05:00 PM
+SEHRI_BOOKING_END_SECONDS = (19 * 60 * 60)    # 07:00 PM
 
 
 def get_bangalore_day_bounds_utc(now_utc: datetime) -> tuple[datetime, datetime, str]:
@@ -1555,7 +1555,7 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
     if not is_within_sehri_booking_window(now):
         raise HTTPException(
             status_code=403,
-            detail="Bookings are open only from 6:00 AM to 5:00 PM (Bangalore time).",
+            detail="Bookings are open only from 6:00 AM to 7:00 PM (Bangalore time).",
         )
     day_start_utc, day_end_utc, local_day_label = get_bangalore_day_bounds_utc(now)
 
