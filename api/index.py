@@ -17,7 +17,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 load_dotenv()
 
-app = FastAPI(title="BangaloreSehri API", version="1.0.0")
+app = FastAPI(title="sehrifinder API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -61,7 +61,7 @@ class SehriRequestCreate(BaseModel):
     address: str
     landmark: str
     pincode: str
-    city: str = "Bangalore"
+    city: str = "India"
     sehriCount: int
     locationType: str
 
@@ -96,8 +96,8 @@ OPENROUTER_MODEL = get_env("OPENROUTER_MODEL", "liquid/lfm-2.5-1.2b-instruct:fre
 OPENROUTER_SITE_URL = get_env("OPENROUTER_SITE_URL")
 OPENROUTER_APP_NAME = get_env("OPENROUTER_APP_NAME")
 
-SYSTEM_PROMPT = """You are Hala AI Assistant, a helpful chatbot for "BangaloreSehri" app.
-You help users find Sehri (pre-dawn meal) providers during Ramadan in Bangalore.
+SYSTEM_PROMPT = """You are Hala AI Assistant, a helpful chatbot for "sehrifinder" app.
+You help users find Sehri (pre-dawn meal) providers during Ramadan across India.
 
 Be friendly, concise, and helpful. Provide information about:
 - Finding nearby Sehri providers (Masjids, Volunteer groups, Restaurants)
@@ -179,6 +179,52 @@ def is_truthy_flag(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return False
+
+
+CITY_ALIASES: dict[str, str] = {
+    "bangalore": "Bangalore",
+    "bengaluru": "Bangalore",
+    "bangaluru": "Bangalore",
+    "chennai": "Chennai",
+    "madras": "Chennai",
+    "mumbai": "Mumbai",
+    "bombay": "Mumbai",
+    "hyderabad": "Hyderabad",
+}
+SUPPORTED_PROVIDER_CITIES = {"Bangalore", "Chennai", "Mumbai", "Hyderabad"}
+
+
+def normalize_city_name(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    lowered = text.lower()
+    if lowered in CITY_ALIASES:
+        return CITY_ALIASES[lowered]
+
+    for alias, canonical in CITY_ALIASES.items():
+        if re.search(rf"\b{re.escape(alias)}\b", lowered):
+            return canonical
+
+    return text.title()
+
+
+def infer_provider_city(document: dict[str, Any], location_text: str, address_text: str) -> str:
+    city_candidates = [
+        first_non_empty(document, ("city", "City", "provider_city", "providerCity"), ""),
+        location_text,
+        address_text,
+        first_non_empty(document, ("Delivery Areas", "delivery_areas", "Google Pin Location"), ""),
+    ]
+
+    for candidate in city_candidates:
+        normalized = normalize_city_name(candidate)
+        if normalized in SUPPORTED_PROVIDER_CITIES:
+            return normalized
+
+    # Backward compatibility: older data in this project was Bangalore-focused.
+    return "Bangalore"
 
 
 def get_auth_db_name() -> str:
@@ -392,12 +438,17 @@ def normalize_provider(document: dict[str, Any]) -> dict[str, Any]:
         # Legacy provider records do not have approval fields; keep them visible as verified.
         is_verified = True
 
+    location_text = first_non_empty(document, ("location", "Area", "area", "Zone", "zone", "City", "city"), "Unknown Area")
+    address_text = first_non_empty(document, ("address", "Address"), "Address not available")
+    city = infer_provider_city(document, location_text, address_text)
+
     return {
         "id": provider_id,
         "name": provider_name,
         "type": provider_type,
-        "location": first_non_empty(document, ("location", "Area", "area", "Zone", "zone", "City", "city"), "Unknown Area"),
-        "address": first_non_empty(document, ("address", "Address"), "Address not available"),
+        "location": location_text,
+        "city": city,
+        "address": address_text,
         "opens": format_open_time(opens_raw),
         "foodType": first_non_empty(
             document,
@@ -563,6 +614,30 @@ def normalize_provider_submission(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_sehri_request(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document.get("_id", "")),
+        "fullName": str(document.get("full_name", "")).strip(),
+        "gender": str(document.get("gender", "")).strip(),
+        "mobileNumber": str(document.get("mobile_number", "")).strip(),
+        "email": str(document.get("email", "")).strip().lower(),
+        "alternativeNumber": str(document.get("alternative_number", "")).strip(),
+        "address": str(document.get("address", "")).strip(),
+        "landmark": str(document.get("landmark", "")).strip(),
+        "pincode": str(document.get("pincode", "")).strip(),
+        "city": str(document.get("city", "")).strip(),
+        "sehriCount": int(document.get("sehri_count", 0) or 0),
+        "locationType": str(document.get("location_type", "")).strip(),
+        "status": str(document.get("status", "pending")).strip().lower() or "pending",
+        "submissionSource": str(document.get("submission_source", "guest")).strip().lower() or "guest",
+        "requestedByUserId": str(document.get("requested_by_user_id", "")).strip(),
+        "requestedByEmail": str(document.get("requested_by_email", "")).strip().lower(),
+        "requestedByName": str(document.get("requested_by_name", "")).strip(),
+        "createdAt": serialize_mongo_value(document.get("created_at")),
+        "updatedAt": serialize_mongo_value(document.get("updated_at")),
+    }
+
+
 def build_location_search_blob(document: dict[str, Any], normalized: dict[str, Any]) -> str:
     location_keys = (
         "location",
@@ -592,6 +667,9 @@ def build_location_search_blob(document: dict[str, Any], normalized: dict[str, A
     normalized_location = str(normalized.get("location", "")).strip().lower()
     if normalized_location:
         tokens.append(normalized_location)
+    normalized_city = str(normalized.get("city", "")).strip().lower()
+    if normalized_city:
+        tokens.append(normalized_city)
 
     return " | ".join(tokens)
 
@@ -599,7 +677,7 @@ def build_location_search_blob(document: dict[str, Any], normalized: dict[str, A
 @app.get("/")
 @app.get("/api")
 def api_root() -> dict:
-    return {"message": "BangaloreSehri API is running."}
+    return {"message": "sehrifinder API is running."}
 
 
 @app.get("/hello")
@@ -612,10 +690,12 @@ def hello_world() -> dict:
 @app.get("/api/providers")
 def list_providers(
     response: Response,
+    city: str | None = Query(default=None, min_length=1),
     location: str | None = Query(default=None, min_length=1),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=12, ge=1, le=50),
 ) -> dict[str, Any]:
+    city_filter = normalize_city_name(city).lower() if isinstance(city, str) else ""
     location_filter = location.strip().lower() if isinstance(location, str) else ""
 
     try:
@@ -641,6 +721,10 @@ def list_providers(
             continue
 
         normalized = normalize_provider(document)
+        if city_filter:
+            provider_city = normalize_city_name(str(normalized.get("city", ""))).lower()
+            if provider_city != city_filter:
+                continue
         if location_filter:
             search_blob = build_location_search_blob(document, normalized)
             if location_filter not in search_blob:
@@ -1232,6 +1316,49 @@ def create_sehri_request(payload: SehriRequestCreate, authorization: str | None 
     }
 
 
+@app.get("/admin/sehri-requests")
+@app.get("/api/admin/sehri-requests")
+def list_sehri_requests(
+    authorization: str | None = Header(default=None),
+    status: str = Query(default="all"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    get_current_admin_user(authorization)
+
+    status_filter = status.strip().lower()
+    query: dict[str, Any] = {}
+    if status_filter and status_filter != "all":
+        query["status"] = status_filter
+
+    try:
+        collection = get_sehri_requests_collection()
+        documents = list(collection.find(query).sort("created_at", -1))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {exc}") from exc
+
+    total = len(documents)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    safe_page = min(page, total_pages)
+    start_index = (safe_page - 1) * page_size
+    end_index = start_index + page_size
+    items = [normalize_sehri_request(doc) for doc in documents[start_index:end_index]]
+
+    return {
+        "data": items,
+        "pagination": {
+            "page": safe_page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": safe_page < total_pages,
+            "has_prev": safe_page > 1,
+        },
+    }
+
+
 @app.get("/health")
 @app.get("/api/health")
 def health() -> dict:
@@ -1267,3 +1394,4 @@ def close_mongo() -> None:
     if _mongo_client is not None:
         _mongo_client.close()
         _mongo_client = None
+

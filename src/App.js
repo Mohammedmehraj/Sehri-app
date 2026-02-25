@@ -6,16 +6,25 @@ const CHATBOT_API_URL = (process.env.REACT_APP_CHATBOT_API_URL || '/api/chat').t
 const PROVIDERS_API_URL = (process.env.REACT_APP_PROVIDERS_API_URL || '/api/providers').trim();
 const PROVIDER_SUBMISSIONS_API_URL = (process.env.REACT_APP_PROVIDER_SUBMISSIONS_API_URL || '/api/providers/submissions').trim();
 const ADMIN_PROVIDER_SUBMISSIONS_API_URL = (process.env.REACT_APP_ADMIN_PROVIDER_SUBMISSIONS_API_URL || '/api/admin/provider-submissions').trim();
+const ADMIN_SEHRI_REQUESTS_API_URL = (process.env.REACT_APP_ADMIN_SEHRI_REQUESTS_API_URL || '/api/admin/sehri-requests').trim();
 const AUTH_API_BASE_URL = (process.env.REACT_APP_AUTH_API_URL || '/api/auth').trim();
 const SEHRI_REQUESTS_API_URL = (process.env.REACT_APP_SEHRI_REQUESTS_API_URL || '/api/sehri-requests').trim();
 const PROVIDERS_PAGE_SIZE = Math.max(
   1,
   parseInt(process.env.REACT_APP_PROVIDERS_PAGE_SIZE || '12', 10) || 12
 );
+const parsedPrayerLatitude = parseFloat(process.env.REACT_APP_PRAYER_LATITUDE || '');
+const parsedPrayerLongitude = parseFloat(process.env.REACT_APP_PRAYER_LONGITUDE || '');
+const DEFAULT_PRAYER_LATITUDE = Number.isFinite(parsedPrayerLatitude) ? parsedPrayerLatitude : 28.6139;
+const DEFAULT_PRAYER_LONGITUDE = Number.isFinite(parsedPrayerLongitude) ? parsedPrayerLongitude : 77.2090;
 const AUTH_TOKEN_STORAGE_KEY = 'sehriFinder_authToken';
+const VISITOR_COUNT_STORAGE_KEY = 'sehriFinder_visitorCount';
+const VISITOR_DAY_STORAGE_KEY = 'sehriFinder_visitedToday';
+const LEGACY_VISITOR_COUNT_STORAGE_KEY = 'bangaloreSehriFinder_visitorCount';
+const LEGACY_VISITOR_DAY_STORAGE_KEY = 'bangaloreSehriFinder_visitedToday';
 const ENTRY_LOTTIE_URL = 'https://lottie.host/18c8584d-60fa-4004-a299-add753193be5/nkq6EpDrn2.lottie';
 const ENTRY_LOTTIE_DURATION_MS = 5000;
-const BANGALORE_RAMADAN_CALENDAR = [
+const INDIA_RAMADAN_CALENDAR = [
   { date: '19 Feb 2026 (1 Ramadan)', sehri: '05:29 AM', iftar: '06:26 PM' },
   { date: '20 Feb 2026', sehri: '05:29 AM', iftar: '06:27 PM' },
   { date: '21 Feb 2026', sehri: '05:28 AM', iftar: '06:27 PM' },
@@ -139,6 +148,7 @@ const UI_GRADIENT_BY_PERIOD = {
 
 const DARK_UI_PERIODS = new Set(['fajr', 'maghrib', 'isha']);
 const CAPTCHA_FORM_KEYS = ['auth', 'provider', 'sehri', 'feedback'];
+const CITY_OPTIONS = ['Chennai', 'Bangalore', 'Mumbai', 'Hyderabad'];
 
 function createCaptchaChallenge() {
   const left = Math.floor(Math.random() * 8) + 2;
@@ -286,6 +296,28 @@ function formatTimeShift(previousValue, currentValue) {
   return `${delta > 0 ? '+' : '-'}${Math.abs(delta)} min`;
 }
 
+function formatAdminDateTime(value) {
+  if (!value) {
+    return '-';
+  }
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return String(value);
+  }
+  return parsedDate.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 // Mock Sehri providers data (Masjids, Volunteers, Restaurants)
 const mockProviders = [
   {
@@ -387,9 +419,13 @@ const mockProviders = [
     pricing: "Paid",
     image: "🥙"
   }
-];
+].map((provider) => ({
+  ...provider,
+  city: provider.city || 'Bangalore',
+}));
 
 function App() {
+  const [selectedCity, setSelectedCity] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [prayerTimes, setPrayerTimes] = useState(null);
@@ -468,11 +504,16 @@ function App() {
   const [providersPageLoadingDirection, setProvidersPageLoadingDirection] = useState('');
   const [providersError, setProvidersError] = useState('');
   const [providerSubmitting, setProviderSubmitting] = useState(false);
+  const [adminDashboardTab, setAdminDashboardTab] = useState('providers');
   const [adminSubmissions, setAdminSubmissions] = useState([]);
   const [adminSubmissionsLoading, setAdminSubmissionsLoading] = useState(false);
   const [adminSubmissionsError, setAdminSubmissionsError] = useState('');
   const [adminStatusFilter, setAdminStatusFilter] = useState('pending');
   const [adminActionLoadingById, setAdminActionLoadingById] = useState({});
+  const [adminSehriRequests, setAdminSehriRequests] = useState([]);
+  const [adminSehriRequestsLoading, setAdminSehriRequestsLoading] = useState(false);
+  const [adminSehriRequestsError, setAdminSehriRequestsError] = useState('');
+  const [adminSehriStatusFilter, setAdminSehriStatusFilter] = useState('all');
   const [formData, setFormData] = useState({
     providerName: '',
     providerType: 'Masjid',
@@ -493,7 +534,7 @@ function App() {
     address: '',
     landmark: '',
     pincode: '',
-    city: 'Bangalore',
+    city: 'India',
     sehriCount: '1',
     locationType: ''
   });
@@ -508,7 +549,7 @@ function App() {
   const [activeIslamicQuoteIndex, setActiveIslamicQuoteIndex] = useState(0);
 
   const ramadanCalendarRows = useMemo(() => (
-    BANGALORE_RAMADAN_CALENDAR.map((row, index) => ({
+    INDIA_RAMADAN_CALENDAR.map((row, index) => ({
       ...row,
       ramadanDay: getRamadanDayFromLabel(row.date, index + 1),
     }))
@@ -658,13 +699,13 @@ function App() {
 
   const activeIslamicQuote = ISLAMIC_QUOTES[activeIslamicQuoteIndex] || ISLAMIC_QUOTES[0];
   
-  // Fetch prayer times for Bangalore
+  // Fetch prayer times for India (default location can be overridden via env vars).
   useEffect(() => {
     const fetchPrayerTimes = async () => {
       try {
-        // Bangalore coordinates: 12.9716, 77.5946
+        // Default: New Delhi coordinates (28.6139, 77.2090).
         const response = await fetch(
-          'https://api.aladhan.com/v1/timings?latitude=12.9716&longitude=77.5946&method=2'
+          `https://api.aladhan.com/v1/timings?latitude=${DEFAULT_PRAYER_LATITUDE}&longitude=${DEFAULT_PRAYER_LONGITUDE}&method=2`
         );
         const data = await response.json();
         
@@ -714,15 +755,23 @@ function App() {
   // Visitor counter
   useEffect(() => {
     // Get current count from localStorage
-    const currentCount = parseInt(localStorage.getItem('bangaloreSehriFinder_visitorCount') || '0');
-    const hasVisitedToday = localStorage.getItem('bangaloreSehriFinder_visitedToday');
+    const currentCount = parseInt(
+      localStorage.getItem(VISITOR_COUNT_STORAGE_KEY)
+      || localStorage.getItem(LEGACY_VISITOR_COUNT_STORAGE_KEY)
+      || '0'
+    );
+    const hasVisitedToday = (
+      localStorage.getItem(VISITOR_DAY_STORAGE_KEY)
+      || localStorage.getItem(LEGACY_VISITOR_DAY_STORAGE_KEY)
+      || ''
+    );
     const today = new Date().toDateString();
     
     // Increment count if it's a new day or first visit
     if (hasVisitedToday !== today) {
       const newCount = currentCount + 1;
-      localStorage.setItem('bangaloreSehriFinder_visitorCount', newCount.toString());
-      localStorage.setItem('bangaloreSehriFinder_visitedToday', today);
+      localStorage.setItem(VISITOR_COUNT_STORAGE_KEY, newCount.toString());
+      localStorage.setItem(VISITOR_DAY_STORAGE_KEY, today);
       setVisitorCount(newCount);
     } else {
       setVisitorCount(currentCount);
@@ -841,7 +890,7 @@ function App() {
     }
 
     if (!authUser) {
-      setAuthError('Please login as admin to manage provider approvals.');
+      setAuthError('Please login as admin to access the admin dashboard.');
       setIsRegisterMode(false);
       setShowAuthModal(true);
       navigateToSection('home');
@@ -859,11 +908,23 @@ function App() {
     const controller = new AbortController();
 
     const fetchProviders = async () => {
+      const trimmedSelectedCity = selectedCity.trim();
+      if (!trimmedSelectedCity) {
+        setProviders([]);
+        setProvidersTotal(0);
+        setProvidersTotalPages(1);
+        setProvidersLoading(false);
+        setProvidersPageLoadingDirection('');
+        setProvidersError('');
+        return;
+      }
+
       setProvidersLoading(true);
       setProvidersError('');
 
       try {
         const queryParams = new URLSearchParams();
+        queryParams.set('city', trimmedSelectedCity);
         queryParams.set('page', String(providersPage));
         queryParams.set('page_size', String(PROVIDERS_PAGE_SIZE));
         const trimmedSearchLocation = searchLocation.trim();
@@ -953,8 +1014,13 @@ function App() {
 
         const trimmedSearchLocation = searchLocation.trim();
         const trimmedLocationFilter = locationFilter.trim();
+        const normalizedSelectedCity = selectedCity.trim().toLowerCase();
         const effectiveLocation = (trimmedLocationFilter || trimmedSearchLocation).toLowerCase();
         const fallbackFiltered = mockProviders.filter(provider => {
+          const providerCity = String(provider.city || '').trim().toLowerCase();
+          if (normalizedSelectedCity && providerCity !== normalizedSelectedCity) {
+            return false;
+          }
           if (!effectiveLocation) {
             return true;
           }
@@ -982,10 +1048,15 @@ function App() {
       clearTimeout(debounceId);
       controller.abort();
     };
-  }, [providersPage, searchLocation, locationFilter]);
+  }, [providersPage, searchLocation, locationFilter, selectedCity]);
 
   const filteredProviders = providers;
   const locationFilterOptions = useMemo(() => {
+    if (!selectedCity) {
+      return [];
+    }
+
+    const selectedCityLower = selectedCity.trim().toLowerCase();
     const byKey = new Map();
 
     const registerLocation = (value) => {
@@ -999,13 +1070,17 @@ function App() {
       }
     };
 
-    mockProviders.forEach((provider) => registerLocation(provider.location));
-    providers.forEach((provider) => registerLocation(provider.location));
+    mockProviders
+      .filter((provider) => String(provider.city || '').trim().toLowerCase() === selectedCityLower)
+      .forEach((provider) => registerLocation(provider.location));
+    providers
+      .filter((provider) => String(provider.city || '').trim().toLowerCase() === selectedCityLower)
+      .forEach((provider) => registerLocation(provider.location));
     registerLocation(searchLocation);
     registerLocation(locationFilter);
 
     return Array.from(byKey.values()).sort((left, right) => left.localeCompare(right));
-  }, [providers, searchLocation, locationFilter]);
+  }, [providers, searchLocation, locationFilter, selectedCity]);
 
   const currentProvidersPage = Math.min(providersPage, providersTotalPages);
   const providersStart = providersTotal === 0 ? 0 : ((currentProvidersPage - 1) * PROVIDERS_PAGE_SIZE) + 1;
@@ -1161,6 +1236,110 @@ function App() {
     }
   }, [authToken, authUser?.isAdmin, adminStatusFilter, parseApiError]);
 
+  const fetchAdminSehriRequests = useCallback(async () => {
+    if (!authToken || !authUser?.isAdmin || !ADMIN_SEHRI_REQUESTS_API_URL) {
+      return;
+    }
+
+    setAdminSehriRequestsLoading(true);
+    setAdminSehriRequestsError('');
+
+    try {
+      const query = new URLSearchParams({
+        status: adminSehriStatusFilter || 'all',
+        page: '1',
+        page_size: '500',
+      });
+      const separator = ADMIN_SEHRI_REQUESTS_API_URL.includes('?') ? '&' : '?';
+      const response = await fetch(
+        `${ADMIN_SEHRI_REQUESTS_API_URL}${separator}${query.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+          cache: 'no-store',
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, 'Failed to load Sehri requests.'));
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      setAdminSehriRequests(Array.isArray(payload.data) ? payload.data : []);
+    } catch (error) {
+      console.error('Failed to load Sehri requests:', error);
+      setAdminSehriRequests([]);
+      setAdminSehriRequestsError(error.message || 'Could not load Sehri requests.');
+    } finally {
+      setAdminSehriRequestsLoading(false);
+    }
+  }, [authToken, authUser?.isAdmin, adminSehriStatusFilter, parseApiError]);
+
+  const handleExportSehriRequestsToExcel = useCallback(() => {
+    if (!adminSehriRequests.length) {
+      alert('There are no Sehri requests to export.');
+      return;
+    }
+
+    const header = [
+      'S.No',
+      'Full Name',
+      'Gender',
+      'Mobile Number',
+      'Email',
+      'Alternative Number',
+      'Address',
+      'Landmark',
+      'Pincode',
+      'City',
+      'Sehri Count',
+      'Location Type',
+      'Status',
+      'Submitted By',
+      'Submission Source',
+      'Created At',
+      'Updated At',
+    ];
+
+    const rows = adminSehriRequests.map((request, index) => ([
+      index + 1,
+      request.fullName || '',
+      request.gender || '',
+      request.mobileNumber || '',
+      request.email || '',
+      request.alternativeNumber || '',
+      request.address || '',
+      request.landmark || '',
+      request.pincode || '',
+      request.city || '',
+      request.sehriCount || '',
+      request.locationType || '',
+      request.status || '',
+      request.requestedByName || request.requestedByEmail || 'Guest',
+      request.submissionSource || '',
+      formatAdminDateTime(request.createdAt),
+      formatAdminDateTime(request.updatedAt),
+    ]));
+
+    const csvRows = [header, ...rows]
+      .map((row) => row.map((cell) => escapeCsvCell(cell)).join(','))
+      .join('\r\n');
+
+    const csvContent = `\uFEFF${csvRows}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `sehri-requests-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [adminSehriRequests]);
+
   const handleAdminSubmissionAction = useCallback(async (submissionId, status) => {
     if (!authToken || !authUser?.isAdmin || !submissionId) {
       return;
@@ -1210,8 +1389,21 @@ function App() {
     if (activeSection !== 'admin' || !authUser?.isAdmin) {
       return;
     }
+    if (adminDashboardTab !== 'providers') {
+      return;
+    }
     fetchAdminProviderSubmissions();
-  }, [activeSection, authUser?.isAdmin, fetchAdminProviderSubmissions]);
+  }, [activeSection, authUser?.isAdmin, adminDashboardTab, fetchAdminProviderSubmissions]);
+
+  useEffect(() => {
+    if (activeSection !== 'admin' || !authUser?.isAdmin) {
+      return;
+    }
+    if (adminDashboardTab !== 'sehriRequests') {
+      return;
+    }
+    fetchAdminSehriRequests();
+  }, [activeSection, authUser?.isAdmin, adminDashboardTab, fetchAdminSehriRequests]);
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -1510,7 +1702,7 @@ function App() {
         address: '',
         landmark: '',
         pincode: '',
-        city: 'Bangalore',
+        city: 'India',
         sehriCount: '1',
         locationType: ''
       });
@@ -1749,7 +1941,7 @@ function App() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-1">
-                BangaloreSehri
+                sehrifinder
               </h1>
               <p className={`${headerSubTextClass} text-xs md:text-sm`}>
                 Find Sehri at Masjids, Volunteers & Restaurants
@@ -2019,23 +2211,49 @@ function App() {
           <>
             {/* Search Bar */}
             <div className="mb-8">
-              <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="cityFilter" className={`block ${overlayTextClass} font-semibold mb-2`}>
+                    Select City <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="cityFilter"
+                    value={selectedCity}
+                    onChange={(e) => {
+                      setSelectedCity(e.target.value);
+                      setSearchLocation('');
+                      setLocationFilter('');
+                      setProvidersPageLoadingDirection('');
+                      setProvidersPage(1);
+                    }}
+                    className="w-full px-4 py-3 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all bg-white"
+                  >
+                    <option value="">Select city</option>
+                    {CITY_OPTIONS.map((cityOption) => (
+                      <option key={cityOption} value={cityOption}>
+                        {cityOption}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label htmlFor="search" className={`block ${overlayTextClass} font-semibold mb-2`}>
-                    Search by Location
+                    Search by Area
                   </label>
                   <div className="relative">
                     <input
                       id="search"
                       type="text"
-                      placeholder="Enter location (e.g., Koramangala, Indiranagar...)"
+                      placeholder={selectedCity ? 'Enter area (e.g., Koramangala, Indiranagar...)' : 'Select city first'}
                       value={searchLocation}
                       onChange={(e) => {
                         setSearchLocation(e.target.value);
                         setProvidersPageLoadingDirection('');
                         setProvidersPage(1);
                       }}
-                      className="w-full px-4 py-3 pl-12 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+                      disabled={!selectedCity}
+                      className="w-full px-4 py-3 pl-12 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                     />
                     <svg
                       className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 ${overlayIconClass}`}
@@ -2065,7 +2283,8 @@ function App() {
                       setProvidersPageLoadingDirection('');
                       setProvidersPage(1);
                     }}
-                    className="w-full px-4 py-3 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all bg-white"
+                    disabled={!selectedCity}
+                    className="w-full px-4 py-3 rounded-lg border-2 border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                   >
                     <option value="">All Locations</option>
                     {locationFilterOptions.map((locationOption) => (
@@ -2080,29 +2299,38 @@ function App() {
 
             {/* Results Count */}
             <div className="mb-6">
-              <p className={`${overlayTextClass} text-center`}>
-                Found <span className={`font-bold ${overlayStrongTextClass}`}>{providersTotal}</span> Sehri providers
-                {searchLocation && (
-                  <span>
-                    {' '}for "<span className="font-semibold">{searchLocation}</span>"
-                  </span>
-                )}
-                {locationFilter && (
-                  <span>
-                    {' '}filtered to "<span className="font-semibold">{locationFilter}</span>"
-                  </span>
-                )}
-                {providersTotal > 0 && (
-                  <span> (showing {providersStart}-{providersEnd})</span>
-                )}
-              </p>
-              {providersLoading && (
-                <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>Loading providers from database...</p>
-              )}
-              {providersError && (
-                <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>
-                  Showing fallback list because API failed: {providersError}
+              {!selectedCity ? (
+                <p className={`${overlayTextClass} text-center`}>
+                  Select a city to view Sehri providers.
                 </p>
+              ) : (
+                <>
+                  <p className={`${overlayTextClass} text-center`}>
+                    Found <span className={`font-bold ${overlayStrongTextClass}`}>{providersTotal}</span> Sehri providers in{' '}
+                    <span className="font-semibold">{selectedCity}</span>
+                    {searchLocation && (
+                      <span>
+                        {' '}for "<span className="font-semibold">{searchLocation}</span>"
+                      </span>
+                    )}
+                    {locationFilter && (
+                      <span>
+                        {' '}filtered to "<span className="font-semibold">{locationFilter}</span>"
+                      </span>
+                    )}
+                    {providersTotal > 0 && (
+                      <span> (showing {providersStart}-{providersEnd})</span>
+                    )}
+                  </p>
+                  {providersLoading && (
+                    <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>Loading providers from database...</p>
+                  )}
+                  {providersError && (
+                    <p className={`text-center text-sm mt-2 ${overlayMutedTextClass}`}>
+                      Showing fallback list because API failed: {providersError}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -2199,7 +2427,7 @@ function App() {
                     <div className="mt-4 flex gap-2">
                       {/* Google Maps Button */}
                       <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.name + ', ' + provider.address + ', Bangalore')}`}
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.name + ', ' + provider.address + ', India')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
@@ -2219,7 +2447,7 @@ function App() {
                           `📍 Location: ${provider.address}\n` +
                           `🕐 Opens: ${provider.opens}\n` +
                           `🍽️ Food: ${provider.foodType}\n\n` +
-                          `Found on BangaloreSehri`
+                          `Found on sehrifinder`
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -2236,7 +2464,7 @@ function App() {
               ))}
             </div>
 
-            {providersTotalPages > 1 && (
+            {selectedCity && providersTotalPages > 1 && (
               <div className="mt-8 flex items-center justify-center gap-3">
                 <button
                   type="button"
@@ -2275,7 +2503,7 @@ function App() {
             )}
 
             {/* No Results Message */}
-            {!providersLoading && providersTotal === 0 && (
+            {selectedCity && !providersLoading && providersTotal === 0 && (
               <div className="text-center py-12">
                 <div className="text-5xl sm:text-6xl mb-4">🔍</div>
                 <h3 className={`text-2xl font-bold mb-2 ${overlayTextClass}`}>
@@ -2331,120 +2559,280 @@ function App() {
         {activeSection === 'admin' && isAdminUser && (
           <div className="max-w-6xl mx-auto">
             <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+              <div className="mb-6">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Provider Approval Admin</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Admin Dashboard</h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    Review provider submissions. Only approved submissions are published.
+                    Manage provider approvals and review Sehri requests from one place.
                   </p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                  <select
-                    value={adminStatusFilter}
-                    onChange={(e) => setAdminStatusFilter(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="all">All</option>
-                  </select>
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={fetchAdminProviderSubmissions}
-                    disabled={adminSubmissionsLoading}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold border ${overlayButtonClass} disabled:opacity-60 disabled:cursor-not-allowed`}
+                    onClick={() => setAdminDashboardTab('providers')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                      adminDashboardTab === 'providers'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
                   >
-                    {adminSubmissionsLoading ? 'Refreshing...' : 'Refresh'}
+                    Provider Submissions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminDashboardTab('sehriRequests')}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                      adminDashboardTab === 'sehriRequests'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Sehri Requests
                   </button>
                 </div>
               </div>
 
-              {adminSubmissionsLoading && (
-                <p className="text-sm text-gray-600 mb-4">Loading provider submissions...</p>
+              {adminDashboardTab === 'providers' && (
+                <>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Provider Approval Queue</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Review provider submissions. Only approved submissions are published.
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <select
+                        value={adminStatusFilter}
+                        onChange={(e) => setAdminStatusFilter(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="all">All</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={fetchAdminProviderSubmissions}
+                        disabled={adminSubmissionsLoading}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border ${overlayButtonClass} disabled:opacity-60 disabled:cursor-not-allowed`}
+                      >
+                        {adminSubmissionsLoading ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {adminSubmissionsLoading && (
+                    <p className="text-sm text-gray-600 mb-4">Loading provider submissions...</p>
+                  )}
+                  {adminSubmissionsError && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                      {adminSubmissionsError}
+                    </p>
+                  )}
+
+                  {!adminSubmissionsLoading && !adminSubmissionsError && adminSubmissions.length === 0 && (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-gray-600">
+                      No provider submissions found for this status.
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {adminSubmissions.map((submission) => {
+                      const submissionStatus = (submission.status || '').toLowerCase();
+                      const actionInProgress = adminActionLoadingById[submission.id] || '';
+                      const canReview = submissionStatus === 'pending';
+                      const statusBadgeClass =
+                        submissionStatus === 'approved'
+                          ? 'bg-green-100 text-green-700'
+                          : submissionStatus === 'rejected'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700';
+
+                      return (
+                        <article key={submission.id} className="rounded-xl border border-gray-200 p-4 sm:p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <h3 className="text-lg font-bold text-gray-800">{submission.providerName || 'Unnamed Provider'}</h3>
+                              <p className="text-sm text-gray-600">
+                                {submission.providerType || 'Unknown'} | {submission.pricing || 'N/A'}
+                              </p>
+                            </div>
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase ${statusBadgeClass}`}>
+                              {submissionStatus || 'pending'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm">
+                            <p><span className="font-semibold text-gray-700">Location:</span> <span className="text-gray-600">{submission.location || '-'}</span></p>
+                            <p><span className="font-semibold text-gray-700">Address:</span> <span className="text-gray-600">{submission.address || '-'}</span></p>
+                            <p><span className="font-semibold text-gray-700">Opens:</span> <span className="text-gray-600">{submission.opensAt || '-'}</span></p>
+                            <p><span className="font-semibold text-gray-700">Phone:</span> <span className="text-gray-600">{submission.phoneNumber || '-'}</span></p>
+                            <p><span className="font-semibold text-gray-700">Food:</span> <span className="text-gray-600">{submission.foodType || '-'}</span></p>
+                            <p><span className="font-semibold text-gray-700">Submitted By:</span> <span className="text-gray-600">{submission.submittedByName || submission.submittedByEmail || 'Guest'}</span></p>
+                          </div>
+
+                          {submission.additionalInfo && (
+                            <p className="mt-3 text-sm text-gray-700">
+                              <span className="font-semibold">Notes:</span> {submission.additionalInfo}
+                            </p>
+                          )}
+                          {submission.reviewNote && (
+                            <p className="mt-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                              <span className="font-semibold">Review Note:</span> {submission.reviewNote}
+                            </p>
+                          )}
+
+                          {canReview && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAdminSubmissionAction(submission.id, 'approved')}
+                                disabled={Boolean(actionInProgress)}
+                                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {actionInProgress === 'approved' ? 'Approving...' : 'Approve'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAdminSubmissionAction(submission.id, 'rejected')}
+                                disabled={Boolean(actionInProgress)}
+                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {actionInProgress === 'rejected' ? 'Rejecting...' : 'Reject'}
+                              </button>
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </>
               )}
-              {adminSubmissionsError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
-                  {adminSubmissionsError}
-                </p>
+
+              {adminDashboardTab === 'sehriRequests' && (
+                <>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Sehri Request List</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        View all Sehri requests and export them for operations.
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <select
+                        value={adminSehriStatusFilter}
+                        onChange={(e) => setAdminSehriStatusFilter(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                      >
+                        <option value="all">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="delivered">Delivered</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={fetchAdminSehriRequests}
+                        disabled={adminSehriRequestsLoading}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold border ${overlayButtonClass} disabled:opacity-60 disabled:cursor-not-allowed`}
+                      >
+                        {adminSehriRequestsLoading ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportSehriRequestsToExcel}
+                        disabled={adminSehriRequestsLoading || adminSehriRequests.length === 0}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        Export to Excel
+                      </button>
+                    </div>
+                  </div>
+
+                  {adminSehriRequestsLoading && (
+                    <p className="text-sm text-gray-600 mb-4">Loading Sehri requests...</p>
+                  )}
+                  {adminSehriRequestsError && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                      {adminSehriRequestsError}
+                    </p>
+                  )}
+
+                  {!adminSehriRequestsLoading && !adminSehriRequestsError && adminSehriRequests.length === 0 && (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-gray-600">
+                      No Sehri requests found for this status.
+                    </div>
+                  )}
+
+                  {!adminSehriRequestsLoading && !adminSehriRequestsError && adminSehriRequests.length > 0 && (
+                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                      <table className="min-w-[1100px] w-full text-sm">
+                        <thead className="bg-gray-100 text-gray-700">
+                          <tr>
+                            <th className="text-left px-3 py-3 font-semibold">Name</th>
+                            <th className="text-left px-3 py-3 font-semibold">Contact</th>
+                            <th className="text-left px-3 py-3 font-semibold">Address</th>
+                            <th className="text-left px-3 py-3 font-semibold">Request</th>
+                            <th className="text-left px-3 py-3 font-semibold">Submitted By</th>
+                            <th className="text-left px-3 py-3 font-semibold">Status</th>
+                            <th className="text-left px-3 py-3 font-semibold">Created</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {adminSehriRequests.map((request) => {
+                            const status = (request.status || 'pending').toLowerCase();
+                            const statusClass =
+                              status === 'approved'
+                                ? 'bg-green-100 text-green-700'
+                                : status === 'rejected'
+                                  ? 'bg-red-100 text-red-700'
+                                  : status === 'delivered'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-amber-100 text-amber-700';
+
+                            return (
+                              <tr key={request.id} className="align-top">
+                                <td className="px-3 py-3">
+                                  <p className="font-semibold text-gray-800">{request.fullName || '-'}</p>
+                                  <p className="text-xs text-gray-500">{request.gender || '-'}</p>
+                                </td>
+                                <td className="px-3 py-3 text-gray-700">
+                                  <p>{request.mobileNumber || '-'}</p>
+                                  <p className="text-xs text-gray-500 mt-1">{request.email || '-'}</p>
+                                </td>
+                                <td className="px-3 py-3 text-gray-700">
+                                  <p>{request.address || '-'}</p>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {request.landmark || '-'}, {request.city || '-'} {request.pincode || ''}
+                                  </p>
+                                </td>
+                                <td className="px-3 py-3 text-gray-700">
+                                  <p><span className="font-semibold">Count:</span> {request.sehriCount || '-'}</p>
+                                  <p><span className="font-semibold">Type:</span> {request.locationType || '-'}</p>
+                                </td>
+                                <td className="px-3 py-3 text-gray-700">
+                                  <p>{request.requestedByName || request.requestedByEmail || 'Guest'}</p>
+                                  <p className="text-xs text-gray-500 mt-1 capitalize">{request.submissionSource || 'guest'}</p>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase ${statusClass}`}>
+                                    {status}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 text-gray-700">
+                                  {formatAdminDateTime(request.createdAt)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
-
-              {!adminSubmissionsLoading && !adminSubmissionsError && adminSubmissions.length === 0 && (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-gray-600">
-                  No provider submissions found for this status.
-                </div>
-              )}
-
-              <div className="space-y-4">
-                {adminSubmissions.map((submission) => {
-                  const submissionStatus = (submission.status || '').toLowerCase();
-                  const actionInProgress = adminActionLoadingById[submission.id] || '';
-                  const canReview = submissionStatus === 'pending';
-                  const statusBadgeClass =
-                    submissionStatus === 'approved'
-                      ? 'bg-green-100 text-green-700'
-                      : submissionStatus === 'rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700';
-
-                  return (
-                    <article key={submission.id} className="rounded-xl border border-gray-200 p-4 sm:p-5">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <h3 className="text-lg font-bold text-gray-800">{submission.providerName || 'Unnamed Provider'}</h3>
-                          <p className="text-sm text-gray-600">
-                            {submission.providerType || 'Unknown'} • {submission.pricing || 'N/A'}
-                          </p>
-                        </div>
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase ${statusBadgeClass}`}>
-                          {submissionStatus || 'pending'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm">
-                        <p><span className="font-semibold text-gray-700">Location:</span> <span className="text-gray-600">{submission.location || '-'}</span></p>
-                        <p><span className="font-semibold text-gray-700">Address:</span> <span className="text-gray-600">{submission.address || '-'}</span></p>
-                        <p><span className="font-semibold text-gray-700">Opens:</span> <span className="text-gray-600">{submission.opensAt || '-'}</span></p>
-                        <p><span className="font-semibold text-gray-700">Phone:</span> <span className="text-gray-600">{submission.phoneNumber || '-'}</span></p>
-                        <p><span className="font-semibold text-gray-700">Food:</span> <span className="text-gray-600">{submission.foodType || '-'}</span></p>
-                        <p><span className="font-semibold text-gray-700">Submitted By:</span> <span className="text-gray-600">{submission.submittedByName || submission.submittedByEmail || 'Guest'}</span></p>
-                      </div>
-
-                      {submission.additionalInfo && (
-                        <p className="mt-3 text-sm text-gray-700">
-                          <span className="font-semibold">Notes:</span> {submission.additionalInfo}
-                        </p>
-                      )}
-                      {submission.reviewNote && (
-                        <p className="mt-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
-                          <span className="font-semibold">Review Note:</span> {submission.reviewNote}
-                        </p>
-                      )}
-
-                      {canReview && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleAdminSubmissionAction(submission.id, 'approved')}
-                            disabled={Boolean(actionInProgress)}
-                            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {actionInProgress === 'approved' ? 'Approving...' : 'Approve'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdminSubmissionAction(submission.id, 'rejected')}
-                            disabled={Boolean(actionInProgress)}
-                            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {actionInProgress === 'rejected' ? 'Rejecting...' : 'Reject'}
-                          </button>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
             </div>
           </div>
         )}
@@ -2456,7 +2844,7 @@ function App() {
               <div className="text-center mb-10 max-w-3xl mx-auto">
                 <div className="text-5xl sm:text-6xl mb-4">🌙</div>
                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-800 mb-4">
-                  About BangaloreSehri
+                  About sehrifinder
                 </h2>
                 <p className="text-lg text-gray-600">
                   Connecting the community with Sehri services during Ramadan
@@ -2471,8 +2859,8 @@ function App() {
                   </h3>
                   <p className="text-gray-600 leading-relaxed">
                     During the blessed month of Ramadan, finding places that serve Sehri (pre-dawn meal) 
-                    can be challenging. BangaloreSehri was created to connect the Muslim community 
-                    in Bangalore with Masjids offering free Sehri, volunteer groups serving the community, 
+                    can be challenging. sehrifinder was created to connect the Muslim community 
+                    across India with Masjids offering free Sehri, volunteer groups serving the community, 
                     and restaurants with early morning services. Whether you're looking for free community 
                     Sehri or restaurants, we make it easy to find the perfect place for your pre-fast meal. 
 
@@ -2487,7 +2875,7 @@ function App() {
                   <ul className="space-y-3 text-gray-600">
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
-                      <span><strong>Real-time Prayer Times:</strong> Accurate prayer times for Bangalore including Fajr (Sehri end time) and Maghrib (Iftar time)</span>
+                      <span><strong>Real-time Prayer Times:</strong> Accurate prayer times for India including Fajr (Sehri end time) and Maghrib (Iftar time)</span>
                     </li>
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
@@ -2495,7 +2883,7 @@ function App() {
                     </li>
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
-                      <span><strong>Comprehensive Directory:</strong> Find Masjids with free Sehri, volunteer-run community kitchens, and restaurants across Bangalore</span>
+                      <span><strong>Comprehensive Directory:</strong> Find Masjids with free Sehri, volunteer-run community kitchens, and restaurants across India</span>
                     </li>
                     <li className="flex items-start gap-3">
                       <span className="text-purple-600 font-bold mt-1">•</span>
@@ -2533,7 +2921,7 @@ function App() {
                     This platform thrives on community contributions. If you know a Masjid offering free Sehri, 
                     a volunteer group serving the community, or a restaurant with early morning service that's 
                     not listed here, please use the "Register as Sehri Provider" form to submit it. Together, we can make 
-                    Ramadan easier for everyone in Bangalore.
+                    Ramadan easier for everyone in India.
                   </p>
                   <button
                     onClick={() => {
@@ -2553,7 +2941,7 @@ function App() {
                   </h3>
                   <p className="text-gray-600 leading-relaxed">
                     Have suggestions or feedback? Want to partner with us? We'd love to hear from you! 
-                    This is a community service built with love for the people of Bangalore.
+                    This is a community service built with love for the people of India.
                   </p>
                 </div>
 
@@ -2657,7 +3045,7 @@ function App() {
                       name="city"
                       value={profileFormData.city}
                       onChange={handleProfileInputChange}
-                      placeholder="Bangalore"
+                      placeholder="City (India)"
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                     />
                   </div>
@@ -3314,7 +3702,7 @@ function App() {
                     name="city"
                     value={sehriRequestData.city}
                     onChange={handleSehriRequestChange}
-                    placeholder="Bangalore"
+                    placeholder="City (India)"
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
@@ -3390,7 +3778,7 @@ function App() {
             <div className={`bg-gradient-to-r ${headerCardGradientClass} ${headerTextClass} p-4 sm:p-6 rounded-t-2xl sticky top-0`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold mb-2">Bangalore Ramadan Calendar 2026</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">India Ramadan Calendar 2026</h2>
                   <p className={`${headerSubTextClass} text-sm`}>
                     Sehri (Suhoor) and Iftar timetable
                   </p>
@@ -3408,7 +3796,7 @@ function App() {
 
             <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(94vh-88px)] sm:max-h-[calc(90vh-96px)]">
               <p className={`text-sm mb-4 ${calendarModalNoteClass}`}>
-                These timings are approximate for Bangalore. Please confirm locally with your nearby mosque.
+                These timings are approximate and can vary by city in India. Please confirm locally with your nearby mosque.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -3570,7 +3958,7 @@ function App() {
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold mb-2">Share Feedback</h2>
                   <p className={`${headerSubTextClass} text-sm`}>
-                    Help us improve the BangaloreSehri experience.
+                    Help us improve the sehrifinder experience.
                   </p>
                 </div>
                 <button
@@ -3680,7 +4068,7 @@ function App() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-4">
             <p className="text-sm">
-              © 2026 BangaloreSehri. Made with ❤️ for the community.
+              © 2026 sehrifinder. Made with ❤️ for the community.
             </p>
             <p className="text-xs text-gray-400 mt-2">
               Prayer times may vary. Please confirm with your local mosque.
@@ -3712,5 +4100,6 @@ function App() {
 }
 
 export default App;
+
 
 

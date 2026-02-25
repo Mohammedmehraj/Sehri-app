@@ -1,11 +1,11 @@
-# BangaloreSehri
+# sehrifinder
 
-A beautiful React.js + Tailwind CSS application to help users find Sehri (pre-dawn meals) in Bangalore during Ramadan. Connect with Masjids offering free Sehri, volunteer groups serving the community, and restaurants with early morning services.
+A beautiful React.js + Tailwind CSS application to help users find Sehri (pre-dawn meals) across India during Ramadan. Connect with Masjids offering free Sehri, volunteer groups serving the community, and restaurants with early morning services.
 
 ## Features
 
 ✅ **Header with App Name** - Beautiful gradient header with branding  
-✅ **Sehri Time Display** - Shows today's Sehri end time (Fajr) for Bangalore  
+✅ **Sehri Time Display** - Shows today's Sehri end time (Fajr) for your configured location in India  
 ✅ **Dynamic Prayer Times** - Real-time prayer times via Aladhan API  
 ✅ **Search Functionality** - Filter providers by location  
 ✅ **Card Layout** - Beautiful card-based display of Sehri providers  
@@ -45,7 +45,7 @@ Each provider card shows:
 - Community-run kitchens
 - Home-cooked meals
 - Free service by volunteers
-- Various locations across Bangalore
+- Various locations across India
 
 ### 🍽️ Restaurants
 - Small restaurants and eateries
@@ -95,9 +95,12 @@ npm start
 	- `REACT_APP_PROVIDERS_API_URL` (optional): `/api/providers` for same-project deployment
 	- `REACT_APP_PROVIDER_SUBMISSIONS_API_URL` (optional): `/api/providers/submissions`
 	- `REACT_APP_ADMIN_PROVIDER_SUBMISSIONS_API_URL` (optional): `/api/admin/provider-submissions`
+	- `REACT_APP_ADMIN_SEHRI_REQUESTS_API_URL` (optional): `/api/admin/sehri-requests`
 	- `REACT_APP_AUTH_API_URL` (optional): `/api/auth` for same-project deployment
 	- `REACT_APP_SEHRI_REQUESTS_API_URL` (optional): `/api/sehri-requests` for same-project deployment
 	- `REACT_APP_PROVIDERS_PAGE_SIZE` (optional): default `12`
+	- `REACT_APP_PRAYER_LATITUDE` (optional): default `28.6139` (New Delhi)
+	- `REACT_APP_PRAYER_LONGITUDE` (optional): default `77.2090` (New Delhi)
 	- `OPENROUTER_API_KEY` (required for chatbot): OpenRouter API key
 	- `OPENROUTER_MODEL` (optional): defaults to `liquid/lfm-2.5-1.2b-instruct:free`
 	- `OPENROUTER_BASE_URL` (optional): defaults to `https://openrouter.ai/api/v1`
@@ -128,6 +131,7 @@ npm start
 - `POST /api/providers/submissions` -> submit a new provider for admin review
 - `GET /api/admin/provider-submissions` -> admin-only list of provider submissions (filter by `status`)
 - `PATCH /api/admin/provider-submissions/{submission_id}` -> admin-only approve/reject action
+- `GET /api/admin/sehri-requests` -> admin-only list of Sehri requests (supports `status` filter + pagination)
 - `PATCH /api/auth/profile` -> update logged-in user basic profile fields
 - `POST /api/sehri-requests` -> creates a Sehri support request in MongoDB (guest and authenticated submissions supported)
 
@@ -150,7 +154,7 @@ npm start
 - Touch-friendly interface
 
 ### Mock Provider Data
-Includes 9 providers across popular Bangalore locations:
+Includes 9 providers across sample locations in India:
 - Shivajinagar (Masjid)
 - Frazer Town (Volunteer)
 - Koramangala (Restaurant & Masjid)
@@ -220,4 +224,5 @@ The counter increments once per user per day, ensuring accurate daily visitor tr
 ## License
 
 Free to use for the community during Ramadan and beyond.
+
 
